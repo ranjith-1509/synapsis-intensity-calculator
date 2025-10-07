@@ -52,7 +52,6 @@ const Opencamera = () => {
     const width = video.videoWidth || 640;
     const height = video.videoHeight || 480;
     if (width === 0 || height === 0) return;
-console.log("hi");
     // Resize canvas to match video
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
@@ -184,18 +183,16 @@ console.log("hi");
     const colors = generateGridColors();
     const series = [];
     
-    // Performance optimization: limit to reasonable number of series
-    const maxSeries = Math.min(totalGrids, 64); // Limit to 64 series for performance
+ 
     
-    // Create a series for each grid cell (or sample if too many)
-    const step = Math.max(1, Math.floor(totalGrids / maxSeries));
+    // Create a series for each grid cell
+    const step = 1;
     
     for (let gridIndex = 0; gridIndex < totalGrids; gridIndex += step) {
       const gridDataPoints = gridData.map((frameData, timeIndex) => ({
         x: timeIndex,
         y: frameData[gridIndex] || 0
       }));
-      console.log(gridData , "gridDataPoints");
       series.push({
         name: `Grid ${gridIndex + 1}`,
         data: gridDataPoints,
@@ -208,7 +205,6 @@ console.log("hi");
     
     return series;
   }, [gridData, gridCols, gridRows]);
-console.log(chartSeries , "chartSeries");
   const handleCalculate = () => {
     if (isRecording) {
       // Stop recording if already recording
