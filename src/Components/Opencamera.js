@@ -215,7 +215,7 @@ console.log("hi");
             WebkitTextFillColor: "transparent",
             backgroundClip: "text"
           }}>
-            Web Camera Intensity Calculator
+            Web Camera Intensity Calculator (Accumulated BarChart)
           </h1>
           <p style={{ 
             margin: 0, 
