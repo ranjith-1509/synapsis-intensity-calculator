@@ -11,7 +11,7 @@ const Opencamera = () => {
   const canvasRef = useRef(null);
   const [isRecording, setIsRecording] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
-  const [gridData, setGridData] = useState([]); // array of 128 grid intensities over time
+  const [seriesData, setSeriesData] = useState([]); // overall average intensity over time
   const intervalRef = useRef(null);
   
   // Editable settings state
@@ -52,6 +52,7 @@ const Opencamera = () => {
     const width = video.videoWidth || 640;
     const height = video.videoHeight || 480;
     if (width === 0 || height === 0) return;
+console.log("hi");
     // Resize canvas to match video
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
@@ -87,11 +88,14 @@ const Opencamera = () => {
       if (perGridCounts[i] > 0) perGridMeans[i] /= perGridCounts[i];
     }
 
-    // Store all grid intensities (128 values per frame)
-    setGridData(prev => {
-      const next = [...prev, perGridMeans];
-      // Keep only the last maxPoints frames to prevent memory issues
-      return next.length > maxPoints ? next.slice(-maxPoints) : next;
+    // Overall average across 128 grids (keeps chart performant)
+    let sum = 0;
+    for (let i = 0; i < perGridMeans.length; i++) sum += perGridMeans[i];
+    const overallAvg = sum / perGridMeans.length;
+    setSeriesData(prev => {
+      const next = prev.length >= maxPoints ? prev.slice(prev.length - (maxPoints - 1)) : prev.slice();
+      next.push(overallAvg);
+      return next;
     });
   };
   const stopRecording = () => {
@@ -117,12 +121,26 @@ const Opencamera = () => {
       xaxis: { lines: { show: true } },
       yaxis: { lines: { show: true } }
     },
-    stroke: {
-      curve: "smooth",
-      width: 1,
+    plotOptions: {
+      bar: {
+        columnWidth: "70%",
+        borderRadius: 3,
+      }
     },
     dataLabels: { enabled: false },
-    markers: { size: 0 },
+    fill: {
+      type: "gradient",
+      gradient: {
+        shade: "dark",
+        type: "vertical",
+        shadeIntensity: 0.3,
+        gradientToColors: ["#6366f1"],
+        inverseColors: false,
+        opacityFrom: 0.9,
+        opacityTo: 0.4,
+        stops: [0, 90, 100]
+      }
+    },
     xaxis: {
       labels: { 
         show: true,
@@ -141,7 +159,7 @@ const Opencamera = () => {
       max: 255,
       tickAmount: 5,
       title: { 
-        text: "Grid Intensity",
+        text: "Avg Intensity",
         style: { color: "#e0e0e0" }
       },
       labels: {
@@ -155,63 +173,20 @@ const Opencamera = () => {
     },
     tooltip: { 
       enabled: true,
-      theme: "dark",
-      shared: true,
-      intersect: false
-    },
-    legend: {
-      show: false // Hide legend since we have 128 series
+      theme: "dark"
     },
     theme: { mode: "dark" }
   }), []);
 
-  // Generate colors for grid lines (128 different colors)
-  const generateGridColors = () => {
-    const colors = [];
-    for (let i = 0; i < gridCols * gridRows; i++) {
-      const hue = (i * 137.5) % 360; // Golden angle for good distribution
-      const saturation = 60 + (i % 3) * 15; // Vary saturation
-      const lightness = 50 + (i % 2) * 20; // Vary lightness
-      colors.push(`hsl(${hue}, ${saturation}%, ${lightness}%)`);
-    }
-    return colors;
-  };
-  const chartSeries = useMemo(() => {
-    if (gridData.length === 0) return [];
-    
-    const totalGrids = gridCols * gridRows;
-    const colors = generateGridColors();
-    const series = [];
-    
- 
-    
-    // Create a series for each grid cell
-    const step = 1;
-    
-    for (let gridIndex = 0; gridIndex < totalGrids; gridIndex += step) {
-      const gridDataPoints = gridData.map((frameData, timeIndex) => ({
-        x: timeIndex,
-        y: frameData[gridIndex] || 0
-      }));
-      series.push({
-        name: `Grid ${gridIndex + 1}`,
-        data: gridDataPoints,
-        color: colors[gridIndex],
-        stroke: {
-          width: totalGrids > 32 ? 0.5 : 1 // Thinner lines for many series
-        }
-      });
-    }
-    
-    return series;
-  }, [gridData, gridCols, gridRows]);
+  const chartSeries = useMemo(() => ([{ name: "Average Intensity", data: seriesData }]), [seriesData]);
+
   const handleCalculate = () => {
     if (isRecording) {
       // Stop recording if already recording
       stopRecording();
     } else {
       // Start recording and show graph
-      setGridData([]);
+      setSeriesData([]);
       setShowGraph(true);
       setIsRecording(true);
       if (intervalRef.current) {
@@ -431,7 +406,14 @@ const Opencamera = () => {
                     boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
                     transition: "all 0.3s ease"
                   }}
-           
+                  onMouseOver={(e) => {
+                    e.target.style.transform = "translateY(-1px)";
+                    e.target.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
+                  }}
+                  onMouseOut={(e) => {
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
+                  }}
                 >
                   {isRecording ? "⏹️ Stop Recording" : "▶️ Calculate Intensity"}
                 </button>
@@ -456,12 +438,12 @@ const Opencamera = () => {
               fontWeight: "600",
               textAlign: "center"
             }}>
-              📈 All Grid Intensities ({gridCols}×{gridRows} = {gridCols * gridRows} grids)
+              📈 Intensity Analysis
             </h3>
             <ReactApexChart 
               options={chartOptions} 
               series={chartSeries} 
-              type="line" 
+              type="bar" 
               height={400} 
             />
           </div>
