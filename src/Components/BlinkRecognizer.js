@@ -55,6 +55,7 @@ const useBlinkDetection = ({ videoRef, isActive = false }) => {
    * Detect blinks from video frame
    */
   const detectFromVideo = useCallback(() => {
+   // console.log('Detecting from video frame...');
     const video = videoRef.current;
     const faceLandmarker = faceLandmarkerRef.current;
 
@@ -134,19 +135,26 @@ const useBlinkDetection = ({ videoRef, isActive = false }) => {
     };
 
     const startRAF = () => {
+      console.log("visibilityState: visible");
       cancelAnimationFrame(animationId);
       clearInterval(intervalId);
       rafLoop();
     };
 
     const startInterval = () => {
+      console.log("visibilityState: hidden");
       cancelAnimationFrame(animationId);
       clearInterval(intervalId);
       intervalId = setInterval(() => {
         if (video.readyState >= 2) runDetection();
-      }, 10);
+      }, 0); // ~60fps interval for minimized state
     };
 
+    if (document.visibilityState === 'visible') {
+      startRAF();
+    } else {
+      startInterval();
+    };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         startRAF();
@@ -156,8 +164,6 @@ const useBlinkDetection = ({ videoRef, isActive = false }) => {
     };
 
     if (isActive) {
-      if (document.visibilityState === 'visible') startRAF();
-      else startInterval();
       document.addEventListener('visibilitychange', handleVisibilityChange);
     }
 
