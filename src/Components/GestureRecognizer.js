@@ -14,8 +14,7 @@ import { FilesetResolver, GestureRecognizer } from '@mediapipe/tasks-vision';
  * - Responsive UI updates without breaking existing functionality
  * - Offloads heavy computation to background thread
  */
-const isElectron = window && window.process && window.process.type;
-
+//console.log(window.process,"isElectron")
 const useGestureRecognition = ({ videoRef, isActive = false }) => {
   const [gestureCounts, setGestureCounts] = useState({
     rock: 0,
@@ -36,16 +35,15 @@ const useGestureRecognition = ({ videoRef, isActive = false }) => {
    */
   const initializeGestureRecognizer = useCallback(async () => {
     try {
-      const isElectron = window.process && window.process.type;
-      const basePath = isElectron ? 'app://' : '';
+     // const basePath = isElectron ? 'app://' : '';
 
       const vision = await FilesetResolver.forVisionTasks(
-        `${basePath}/wasm`
+        `/wasm`
       );
       
       gestureRecognizerRef.current = await GestureRecognizer.createFromOptions(vision, {
         baseOptions: {
-          modelAssetPath: `${basePath}/models/gesture_recognizer.task`,
+          modelAssetPath: `/models/gesture_recognizer.task`,
           delegate: "GPU"
         },
         runningMode: "VIDEO"
@@ -66,7 +64,7 @@ const useGestureRecognition = ({ videoRef, isActive = false }) => {
    * Processes the current video frame and returns the detected gesture
    */
   const recognizeGesture = useCallback(() => {
-    console.log("hiiii<><><")
+    //console.log("hiiii<><><")
     if (!gestureRecognizerRef.current || !videoRef.current || !isActive) {
       return;
     }
