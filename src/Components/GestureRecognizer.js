@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { GestureRecognizer, FilesetResolver } from '@mediapipe/tasks-vision';
+import { FilesetResolver, GestureRecognizer } from '@mediapipe/tasks-vision';
 
 /**
  * useGestureRecognition Hook
@@ -14,6 +14,8 @@ import { GestureRecognizer, FilesetResolver } from '@mediapipe/tasks-vision';
  * - Responsive UI updates without breaking existing functionality
  * - Offloads heavy computation to background thread
  */
+const isElectron = window && window.process && window.process.type;
+
 const useGestureRecognition = ({ videoRef, isActive = false }) => {
   const [gestureCounts, setGestureCounts] = useState({
     rock: 0,
@@ -34,26 +36,22 @@ const useGestureRecognition = ({ videoRef, isActive = false }) => {
    */
   const initializeGestureRecognizer = useCallback(async () => {
     try {
-      console.log('Initializing MediaPipe Gesture Recognizer...');
-      
+      const isElectron = window.process && window.process.type;
+      const basePath = isElectron ? 'app://' : '';
+
       const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm"
+        `${basePath}/wasm`
       );
       
       gestureRecognizerRef.current = await GestureRecognizer.createFromOptions(vision, {
         baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+          modelAssetPath: `${basePath}/models/gesture_recognizer.task`,
           delegate: "GPU"
         },
-        runningMode: "LIVE_STREAM",
-        numHands: 1,
-        minHandDetectionConfidence: 0.5,
-        minHandPresenceConfidence: 0.5,
-        minTrackingConfidence: 0.5
+        runningMode: "VIDEO"
       });
       
       setIsInitialized(true);
-      console.log('Gesture Recognizer initialized successfully');
     } catch (error) {
       console.error('Failed to initialize Gesture Recognizer:', error);
       console.error('Error details:', {
@@ -63,7 +61,6 @@ const useGestureRecognition = ({ videoRef, isActive = false }) => {
       });
     }
   }, []);
-
   /**
    * Recognize gesture from video frame
    * Processes the current video frame and returns the detected gesture
@@ -75,6 +72,7 @@ const useGestureRecognition = ({ videoRef, isActive = false }) => {
     }
 
     const video = videoRef.current;
+
     if (video.videoWidth === 0 || video.videoHeight === 0) {
       return;
     }
@@ -111,7 +109,7 @@ const useGestureRecognition = ({ videoRef, isActive = false }) => {
             setCurrentGesture(mappedGesture);
             
             // Increment count for the detected gesture
-            setGestureCounts(prevCounts => ({
+              setGestureCounts(prevCounts => ({
               ...prevCounts,
               [mappedGesture]: prevCounts[mappedGesture] + 1
             }));
@@ -127,7 +125,7 @@ const useGestureRecognition = ({ videoRef, isActive = false }) => {
     } catch (error) {
       console.error('Error recognizing gesture:', error);
     }
-  }, [isActive, videoRef]);
+  }, [ videoRef]);
 
   /**
    * Reset gesture counts to zero
@@ -169,53 +167,54 @@ useEffect(() => {
     }
   };
 
-  const renderLoop = () => {
-    // Only run if video frame changed
-    if (video.currentTime !== lastVideoTime) {
-      runGesture();
-    }
+  // const renderLoop = () => {
+  //   // Only run if video frame changed
+  //   if (video.currentTime !== lastVideoTime) {
+  //     runGesture();
+  //   }
 
-    animationId = requestAnimationFrame(renderLoop);
-  };
+  //   animationId = requestAnimationFrame(renderLoop);
+  // };
 
-  const startRAF = () => {
-    cancelAnimationFrame(animationId);
-    clearInterval(intervalId);
-    renderLoop();
-  };
+  // const startRAF = () => {
+  //   cancelAnimationFrame(animationId);
+  //   clearInterval(intervalId);
+  //   renderLoop();
+  // };
 
   const startInterval = () => {
     cancelAnimationFrame(animationId);
     clearInterval(intervalId);
     intervalId = setInterval(() => {
-      if (video.readyState >= 2) runGesture();
+      // if (video.readyState >= 2) runGesture();
+      runGesture();
     }, 10); // adjust interval as needed
   };
 
   // Handle visibility changes automatically
-  const handleVisibilityChange = () => {
-    if (document.visibilityState === "visible") {
-      startRAF();
-    } else {
-      startInterval();
-    }
-  };
+  // const handleVisibilityChange = () => {
+  //   if (document.visibilityState === "visible") {
+  //     startRAF();
+  //   } else {
+  //     startInterval();
+  //   }
+  // };
 
-  if (isActive && isInitialized) {
-    // Start correct mode based on initial visibility
-    if (document.visibilityState === "visible") {
-      startRAF();
-    } else {
-      startInterval();
-    }
+  // if (isActive && isInitialized) {
+  //   // Start correct mode based on initial visibility
+  //   if (document.visibilityState === "visible") {
+  //     startRAF();
+  //   } else {
+  //     startInterval();
+  //   }
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-  }
-
+  //   document.addEventListener("visibilitychange", handleVisibilityChange);
+  // }
+startInterval()
   return () => {
     cancelAnimationFrame(animationId);
     clearInterval(intervalId);
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
+   // document.removeEventListener("visibilitychange", handleVisibilityChange);
   };
 }, [isActive, isInitialized, recognizeGesture]);
 

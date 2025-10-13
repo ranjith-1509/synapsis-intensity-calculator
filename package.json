@@ -1,7 +1,8 @@
 {
   "name": "synapsis-intensity-calculator",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "main": "public/electron.js",
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.22-rc.20250304",
     "@testing-library/dom": "^10.4.1",
@@ -19,24 +20,27 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "postinstall": "node scripts/download-mediapipe.js",
+    "electron-dev": "npm run postinstall && concurrently \"BROWSER=none npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron-pack": "electron-builder -c.extraMetadata.main=build/electron.js",
+    "preelectron-pack": "npm run build"
   },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
+  "build": {
+    "appId": "com.yourapp.synapsis-intensity-calculator",
+    "files": [
+      "build/**/*",
+      "node_modules/**/*"
     ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "directories": {
+      "buildResources": "assets"
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^38.2.2",
+    "electron-builder": "^26.0.12",
+    "electron-is-dev": "^3.0.1",
+    "wait-on": "^9.0.1"
   }
 }
