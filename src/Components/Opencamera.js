@@ -1,22 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 
-const DEFAULT_GRID_COLS = 16; // 16 x 8 = 128 grids
-const DEFAULT_GRID_ROWS = 8;
-const DEFAULT_TARGET_FPS = 10; // throttle processing to avoid UI jank
-const DEFAULT_MAX_POINTS = 3000; // keep memory bounded for long recordings
+
+const DEFAULT_TARGET_FPS = 30;
+const DEFAULT_MAX_POINTS = 3000;
+const AUTO_SCALE_POINTS = 100; // Number of points to consider for auto-scaling
 
 const Opencamera = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [isRecording, setIsRecording] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
-  const [seriesData, setSeriesData] = useState([]); // overall average intensity over time
+  const [seriesData, setSeriesData] = useState([]);
   const intervalRef = useRef(null);
-  
-  // Editable settings state
-  const [gridCols, setGridCols] = useState(DEFAULT_GRID_COLS);
-  const [gridRows, setGridRows] = useState(DEFAULT_GRID_ROWS);
+
   const [targetFps, setTargetFps] = useState(DEFAULT_TARGET_FPS);
   const [maxPoints, setMaxPoints] = useState(DEFAULT_MAX_POINTS);
 
@@ -33,71 +30,90 @@ const Opencamera = () => {
         console.error("Error accessing camera:", err);
       }
     })();
+
     return () => {
       isCancelled = true;
       const mediaStream = videoRef.current && videoRef.current.srcObject;
       if (mediaStream) {
         mediaStream.getTracks().forEach(t => t.stop());
       }
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
+const handleExportJSON = () => {
+  if (!seriesData || seriesData.length === 0) return;
+
+  // Convert seriesData to JSON string
+  const jsonData = JSON.stringify(seriesData, null, 2); // pretty print
+
+  // Create a blob
+  const blob = new Blob([jsonData], { type: "application/json" });
+
+  // Create a link and trigger download
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "intensity_data.json";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+
+const handleExportCSV = () => {
+
+  if (!seriesData || seriesData.length === 0) return;
+
+  // Create CSV header and rows
+  let csvContent = "data:text/csv;charset=utf-8,Time,Intensity\n";
+  csvContent += seriesData.map((val, i) => `${i + 1},${val}`).join("\n");
+
+  // Create a download link and trigger it
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", "intensity_data.csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
 
   const processFrame = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+
     const width = video.videoWidth || 640;
     const height = video.videoHeight || 480;
     if (width === 0 || height === 0) return;
-console.log("hi");
-    // Resize canvas to match video
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
 
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    canvas.width = width;
+    canvas.height = height;
     ctx.drawImage(video, 0, 0, width, height);
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const { data } = imageData;
 
-    const cellWidth = Math.floor(width / gridCols);
-    const cellHeight = Math.floor(height / gridRows);
-    const perGridMeans = new Array(gridCols * gridRows).fill(0);
-    const perGridCounts = new Array(gridCols * gridRows).fill(0);
+    const { data } = ctx.getImageData(0, 0, width, height);
 
-    // Iterate pixels and accumulate grayscale intensity into grid buckets
-    for (let y = 0; y < height; y++) {
-      const rowIdx = Math.min(Math.floor(y / cellHeight), gridRows - 1);
-      for (let x = 0; x < width; x++) {
-        const colIdx = Math.min(Math.floor(x / cellWidth), gridCols - 1);
-        const gridIdx = rowIdx * gridCols + colIdx;
-        const i = (y * width + x) * 4;
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        // Luma (BT.601)
-        const intensity = 0.299 * r + 0.587 * g + 0.114 * b;
-        perGridMeans[gridIdx] += intensity;
-        perGridCounts[gridIdx]++;
-      }
+    let totalIntensity = 0;
+    const pixelCount = width * height;
+
+    // Compute overall average intensity
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const intensity = 0.299 * r + 0.587 * g + 0.114 * b;
+      totalIntensity += intensity;
     }
 
-    for (let i = 0; i < perGridMeans.length; i++) {
-      if (perGridCounts[i] > 0) perGridMeans[i] /= perGridCounts[i];
-    }
+    const avgIntensity = totalIntensity / pixelCount;
 
-    // Overall average across 128 grids (keeps chart performant)
-    let sum = 0;
-    for (let i = 0; i < perGridMeans.length; i++) sum += perGridMeans[i];
-    const overallAvg = sum / perGridMeans.length;
     setSeriesData(prev => {
       const next = prev.length >= maxPoints ? prev.slice(prev.length - (maxPoints - 1)) : prev.slice();
-      next.push(overallAvg);
+      next.push(avgIntensity);
       return next;
     });
   };
+
   const stopRecording = () => {
     setIsRecording(false);
     if (intervalRef.current) {
@@ -106,350 +122,262 @@ console.log("hi");
     }
   };
 
-  const chartOptions = useMemo(() => ({
+ // Inside your component
+const chartOptions = useMemo(() => {
+  // Calculate dynamic min/max with ±10 buffer
+  let yMin = 0;
+  let yMax = 255;
+  if (seriesData.length > 0) {
+    //i have kept auto sclaing for last 100 poinnts 
+    const recentData = seriesData.slice(-AUTO_SCALE_POINTS); // last N points
+    const minVal = Math.min(...recentData);
+    const maxVal = Math.max(...recentData);
+    yMin = Math.max(minVal - 10, 0);   // buffer -10
+    yMax = Math.min(maxVal + 10, 255); // buffer +10
+  }
+
+  console.log("Y-Axis Range:", yMin, yMax);
+
+  return {
     chart: {
-      id: "intensity-chart",
-      animations: { enabled: false },
-      zoom: { enabled: false },
+      id: "intensity-line-chart",
+      type: "line",
+      animations: { enabled: true, easing: "linear", dynamicAnimation: { speed: 200 } },
       toolbar: { show: false },
-      foreColor: "#e0e0e0",
+      zoom: { enabled: false },
+      foreColor: "#00ff00",
       background: "transparent",
     },
-    grid: { 
-      strokeDashArray: 4,
-      borderColor: "#404040",
-      xaxis: { lines: { show: true } },
-      yaxis: { lines: { show: true } }
-    },
-    plotOptions: {
-      bar: {
-        columnWidth: "70%",
-        borderRadius: 3,
-      }
-    },
+    stroke: { curve: "smooth", width: 2, colors: ["#00ff00"] },
+    grid: { borderColor: "#333", strokeDashArray: 3 },
     dataLabels: { enabled: false },
-    fill: {
-      type: "gradient",
-      gradient: {
-        shade: "dark",
-        type: "vertical",
-        shadeIntensity: 0.3,
-        gradientToColors: ["#6366f1"],
-        inverseColors: false,
-        opacityFrom: 0.9,
-        opacityTo: 0.4,
-        stops: [0, 90, 100]
-      }
-    },
+    markers: { size: 0 },
     xaxis: {
-      labels: { 
-        show: true,
-        style: { colors: "#e0e0e0" }
-      },
-      title: { 
-        text: "Time (frames)",
-        style: { color: "#e0e0e0" }
-      },
-      tickAmount: 10,
-      axisBorder: { color: "#404040" },
-      axisTicks: { color: "#404040" }
+      title: { text: "Time (frames)", style: { color: "#ccc" } },
+      labels: { show: false, style: { colors: "#ccc" } },
     },
     yaxis: {
-      min: 0,
-      max: 255,
+      min: yMin,
+      max: yMax,
       tickAmount: 5,
-      title: { 
-        text: "Avg Intensity",
-        style: { color: "#e0e0e0" }
-      },
-      labels: {
-        style: { colors: "#e0e0e0" },
-        formatter: function (val) {
-          return Math.round(val);
-        }
-      },
-      axisBorder: { color: "#404040" },
-      axisTicks: { color: "#404040" }
+      title: { text: "Intensity", style: { color: "#ccc" } },
+      labels: { formatter: (val) => Math.round(val), style: { colors: "#ccc" } },
     },
-    tooltip: { 
-      enabled: true,
-      theme: "dark"
-    },
-    theme: { mode: "dark" }
-  }), []);
+    tooltip: { enabled: false },
+    theme: { mode: "dark" },
+  };
+}, [seriesData, maxPoints]);
 
-  const chartSeries = useMemo(() => ([{ name: "Average Intensity", data: seriesData }]), [seriesData]);
 
+  const chartSeries = useMemo(
+    () => [{ name: "Avg Intensity", data: seriesData }],
+    [seriesData]
+  );
   const handleCalculate = () => {
     if (isRecording) {
-      // Stop recording if already recording
       stopRecording();
     } else {
-      // Start recording and show graph
       setSeriesData([]);
       setShowGraph(true);
       setIsRecording(true);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = setInterval(processFrame, 1000 / targetFps);
     }
   };
 
   return (
-    <div style={{ 
-      minHeight: "100vh", 
-      background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
-      color: "#e0e0e0",
-      padding: "20px 0"
-    }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
+        color: "#e0e0e0",
+        padding: "20px 0",
+      }}
+    >
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 20px" }}>
         <div style={{ textAlign: "center", marginBottom: "32px" }}>
-          <h1 style={{ 
-            margin: 0, 
-            marginBottom: "8px", 
-            fontSize: "2.5rem",
-            fontWeight: "700",
-            background: "linear-gradient(45deg, #6366f1, #8b5cf6)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text"
-          }}>
-            Web Camera Intensity Calculator (Accumulated BarChart)
+          <h1
+            style={{
+              margin: 0,
+              marginBottom: "8px",
+              fontSize: "2.5rem",
+              fontWeight: "700",
+              background: "linear-gradient(45deg, #6366f1, #8b5cf6)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            Web Camera Intensity Monitor (Single-Frame Avg)
           </h1>
-          <p style={{ 
-            margin: 0, 
-            color: "#a0a0a0", 
-            fontSize: "1.1rem",
-            fontWeight: "300"
-          }}>
-            Real-time intensity analysis with 128-grid precision
+          <p style={{ color: "#a0a0a0" }}>
+            Real-time overall brightness tracking — useful for PPG/SpO₂ signal visualization
           </p>
         </div>
 
-        <div style={{ 
-          display: "grid", 
-          gridTemplateColumns: "1fr 1fr", 
-          gap: "32px", 
-          alignItems: "start",
-          marginBottom: "32px"
-        }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px" }}>
           <div>
-            <div style={{ 
-              position: "relative", 
-              borderRadius: "16px", 
-              overflow: "hidden", 
-              boxShadow: "0 8px 32px rgba(0,0,0,0.3)", 
-              background: "#1a1a2e",
-              border: "2px solid #2d3748"
-            }}>
-              <video 
-                ref={videoRef} 
-                autoPlay 
-                playsInline 
-                muted 
-                width="100%" 
-                height="auto" 
-                style={{ display: "block", maxWidth: "100%" }} 
-              />
-            </div>
-            
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              width="100%"
+              height="auto"
+              style={{
+                display: "block",
+                borderRadius: "12px",
+                border: "2px solid #2d3748",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+              }}
+            />
           </div>
 
-          <div style={{ 
-            background: "rgba(26, 26, 46, 0.8)", 
-            borderRadius: "16px", 
-            padding: "24px",
-            border: "1px solid #2d3748",
-            backdropFilter: "blur(10px)"
-          }}>
-            <h3 style={{ 
-              margin: "0 0 16px 0", 
-              color: "#e0e0e0",
-              fontSize: "1.3rem",
-              fontWeight: "600"
-            }}>
-              📊 Settings
-            </h3>
-            <div style={{ 
-              display: "grid", 
-              gap: "16px",
-              fontSize: "0.95rem"
-            }}>
-              <div style={{ 
-                display: "flex", 
-                flexDirection: "column",
-                gap: "8px"
-              }}>
-                <label style={{ color: "#a0a0a0", fontSize: "0.9rem" }}>Grid Columns:</label>
-                <input
-                  type="number"
-                  min="4"
-                  max="32"
-                  value={gridCols}
-                  onChange={(e) => setGridCols(Math.max(4, Math.min(32, parseInt(e.target.value) || 16)))}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #2d3748",
-                    background: "#1a1a2e",
-                    color: "#e0e0e0",
-                    fontSize: "0.9rem",
-                    outline: "none"
-                  }}
-                />
-              </div>
-              
-              <div style={{ 
-                display: "flex", 
-                flexDirection: "column",
-                gap: "8px"
-              }}>
-                <label style={{ color: "#a0a0a0", fontSize: "0.9rem" }}>Grid Rows:</label>
-                <input
-                  type="number"
-                  min="4"
-                  max="32"
-                  value={gridRows}
-                  onChange={(e) => setGridRows(Math.max(4, Math.min(32, parseInt(e.target.value) || 8)))}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #2d3748",
-                    background: "#1a1a2e",
-                    color: "#e0e0e0",
-                    fontSize: "0.9rem",
-                    outline: "none"
-                  }}
-                />
-              </div>
-
-              <div style={{ 
-                display: "flex", 
-                flexDirection: "column",
-                gap: "8px"
-              }}>
-                <label style={{ color: "#a0a0a0", fontSize: "0.9rem" }}>Sampling Rate (fps):</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="60"
-                  value={targetFps}
-                  onChange={(e) => setTargetFps(Math.max(1, Math.min(60, parseInt(e.target.value) || 10)))}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #2d3748",
-                    background: "#1a1a2e",
-                    color: "#e0e0e0",
-                    fontSize: "0.9rem",
-                    outline: "none"
-                  }}
-                />
-              </div>
-
-              <div style={{ 
-                display: "flex", 
-                flexDirection: "column",
-                gap: "8px"
-              }}>
-                <label style={{ color: "#a0a0a0", fontSize: "0.9rem" }}>Max Data Points:</label>
-                <input
-                  type="number"
-                  min="100"
-                  max="10000"
-                  step="100"
-                  value={maxPoints}
-                  onChange={(e) => setMaxPoints(Math.max(100, Math.min(10000, parseInt(e.target.value) || 3000)))}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #2d3748",
-                    background: "#1a1a2e",
-                    color: "#e0e0e0",
-                    fontSize: "0.9rem",
-                    outline: "none"
-                  }}
-                />
-              </div>
-
-              <div style={{ 
-                padding: "12px 0",
-                borderTop: "1px solid #2d3748",
-                marginTop: "8px"
-              }}>
-                <div style={{ 
-                  fontSize: "0.85rem", 
-                  color: "#a0a0a0", 
-                  marginBottom: "12px",
-                  textAlign: "center"
-                }}>
-                  Total Grids: <span style={{ color: "#6366f1", fontWeight: "600" }}>
-                    {gridCols} × {gridRows} = {gridCols * gridRows}
-                  </span>
-                </div>
-                
-                <button
-                  onClick={handleCalculate}
-                  style={{
-                    width: "100%",
-                    padding: "14px",
-                    borderRadius: "8px",
-                    border: 0,
-                    cursor: "pointer",
-                    background: isRecording 
-                      ? "linear-gradient(45deg, #ef4444, #dc2626)" 
-                      : "linear-gradient(45deg, #6366f1, #4f46e5)",
-                    color: "#fff",
-                    fontWeight: "600",
-                    fontSize: "1rem",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-                    transition: "all 0.3s ease"
-                  }}
-                  onMouseOver={(e) => {
-                    e.target.style.transform = "translateY(-1px)";
-                    e.target.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
-                  }}
-                  onMouseOut={(e) => {
-                    e.target.style.transform = "translateY(0)";
-                    e.target.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
-                  }}
-                >
-                  {isRecording ? "⏹️ Stop Recording" : "▶️ Calculate Intensity"}
-                </button>
-              </div>
+          <div
+            style={{
+              background: "rgba(26, 26, 46, 0.8)",
+              borderRadius: "16px",
+              padding: "24px",
+              border: "1px solid #2d3748",
+              backdropFilter: "blur(10px)",
+            }}
+          >
+            <h3>⚙️ Settings</h3>
+            <div style={{ marginBottom: "16px" }}>
+              <label>Sampling Rate (fps): </label>
+              <input
+                type="number"
+                min="1"
+                max="60"
+                value={targetFps}
+                onChange={(e) =>
+                  setTargetFps(
+                    Math.max(1, Math.min(60, parseInt(e.target.value) || 10))
+                  )
+                }
+                style={{
+                  marginLeft: "8px",
+                  padding: "6px 10px",
+                  background: "#1a1a2e",
+                  border: "1px solid #2d3748",
+                  color: "#e0e0e0",
+                  borderRadius: "8px",
+                }}
+              />
             </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label>Max Data Points: </label>
+              <input
+                type="number"
+                min="100"
+                max="10000"
+                step="100"
+                value={maxPoints}
+                onChange={(e) =>
+                  setMaxPoints(
+                    Math.max(100, Math.min(10000, parseInt(e.target.value) || 3000))
+                  )
+                }
+                style={{
+                  marginLeft: "8px",
+                  padding: "6px 10px",
+                  background: "#1a1a2e",
+                  border: "1px solid #2d3748",
+                  color: "#e0e0e0",
+                  borderRadius: "8px",
+                }}
+              />
+            </div>
+
+            <button
+              onClick={handleCalculate}
+              style={{
+                width: "100%",
+                padding: "14px",
+                borderRadius: "8px",
+                border: 0,
+                cursor: "pointer",
+                background: isRecording
+                  ? "linear-gradient(45deg, #ef4444, #dc2626)"
+                  : "linear-gradient(45deg, #6366f1, #4f46e5)",
+                color: "#fff",
+                fontWeight: "600",
+                fontSize: "1rem",
+              }}
+            >
+              {isRecording ? "⏹️ Stop Recording" : "▶️ Start Measurement"}
+            </button>
+
+<div style={{ display: "flex", gap: "16px", marginTop: "16px" }}>
+  <button
+    onClick={handleExportCSV}
+    disabled={seriesData.length === 0}
+    style={{
+      flex: 1,
+      padding: "14px",
+      borderRadius: "8px",
+      border: 0,
+      cursor: seriesData.length === 0 ? "not-allowed" : "pointer",
+      background: seriesData.length === 0
+        ? "gray"
+        : "linear-gradient(45deg, #6366f1, #4f46e5)",
+      color: "#fff",
+      fontWeight: "600",
+      fontSize: "1rem",
+      opacity: seriesData.length === 0 ? 0.6 : 1,
+    }}
+  >
+    Export CSV
+  </button>
+
+  <button
+    onClick={handleExportJSON}
+    disabled={seriesData.length === 0}
+    style={{
+      flex: 1,
+      padding: "14px",
+      borderRadius: "8px",
+      border: 0,
+      cursor: seriesData.length === 0 ? "not-allowed" : "pointer",
+      background: seriesData.length === 0
+        ? "gray"
+        : "linear-gradient(45deg, #10b981, #059669)", // green gradient
+      color: "#fff",
+      fontWeight: "600",
+      fontSize: "1rem",
+      opacity: seriesData.length === 0 ? 0.6 : 1,
+    }}
+  >
+    Export JSON
+  </button>
+</div>
+
+
           </div>
         </div>
 
         {showGraph && (
-          <div style={{ 
-            background: "rgba(26, 26, 46, 0.8)", 
-            borderRadius: "16px", 
-            padding: "24px",
-            border: "1px solid #2d3748",
-            backdropFilter: "blur(10px)",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.2)"
-          }}>
-            <h3 style={{ 
-              margin: "0 0 20px 0", 
-              color: "#e0e0e0",
-              fontSize: "1.3rem",
-              fontWeight: "600",
-              textAlign: "center"
-            }}>
-              📈 Intensity Analysis
-            </h3>
-            <ReactApexChart 
-              options={chartOptions} 
-              series={chartSeries} 
-              type="bar" 
-              height={400} 
+          <div
+            style={{
+              background: "rgba(26, 26, 46, 0.8)",
+              borderRadius: "16px",
+              padding: "24px",
+              border: "1px solid #2d3748",
+              marginTop: "32px",
+            }}
+          >
+            <h3 style={{ textAlign: "center" }}>📈 Intensity Over Time</h3>
+            <ReactApexChart
+              options={chartOptions}
+              series={chartSeries}
+              type="line"
+              height={400}
             />
           </div>
         )}
       </div>
-      
+
       <canvas ref={canvasRef} style={{ display: "none" }} />
     </div>
   );
