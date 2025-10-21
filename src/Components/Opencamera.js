@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 
-
 const DEFAULT_TARGET_FPS = 30;
 const DEFAULT_MAX_POINTS = 3000;
 const AUTO_SCALE_POINTS = 100; // Number of points to consider for auto-scaling
@@ -12,8 +11,9 @@ const Opencamera = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
   const [seriesData, setSeriesData] = useState([]);
+  const [exportData, setExportData] = useState([]);
+  const [theme, setTheme] = useState("light"); // 🌙 new state for theme
   const intervalRef = useRef(null);
-
   const [targetFps, setTargetFps] = useState(DEFAULT_TARGET_FPS);
   const [maxPoints, setMaxPoints] = useState(DEFAULT_MAX_POINTS);
 
@@ -40,42 +40,31 @@ const Opencamera = () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
-const handleExportJSON = () => {
-  if (!seriesData || seriesData.length === 0) return;
-
-  // Convert seriesData to JSON string
-  const jsonData = JSON.stringify(seriesData, null, 2); // pretty print
-
-  // Create a blob
-  const blob = new Blob([jsonData], { type: "application/json" });
-
-  // Create a link and trigger download
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "intensity_data.json";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
+  const handleExportJSON = () => {
+    if (!exportData || exportData.length === 0) return;
+    const jsonData = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonData], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "intensity_data.json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
 
-const handleExportCSV = () => {
-
-  if (!seriesData || seriesData.length === 0) return;
-
-  // Create CSV header and rows
-  let csvContent = "data:text/csv;charset=utf-8,Time,Intensity\n";
-  csvContent += seriesData.map((val, i) => `${i + 1},${val}`).join("\n");
-
-  // Create a download link and trigger it
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  link.setAttribute("download", "intensity_data.csv");
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
+  const handleExportCSV = () => {
+    if (!exportData || exportData.length === 0) return;
+    let csvContent = "data:text/csv;charset=utf-8,Time,Intensity\n";
+    csvContent += exportData.map((val, i) => `${i + 1},${val}`).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "intensity_data.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const processFrame = () => {
     const video = videoRef.current;
@@ -106,9 +95,12 @@ const handleExportCSV = () => {
     }
 
     const avgIntensity = totalIntensity / pixelCount;
-
-    setSeriesData(prev => {
-      const next = prev.length >= maxPoints ? prev.slice(prev.length - (maxPoints - 1)) : prev.slice();
+    setExportData((prev) => [...prev, avgIntensity]);
+    setSeriesData((prev) => {
+      const next =
+        prev.length >= maxPoints
+          ? prev.slice(prev.length - (maxPoints - 1))
+          : prev.slice();
       next.push(avgIntensity);
       return next;
     });
@@ -123,51 +115,59 @@ const handleExportCSV = () => {
   };
 
  // Inside your component
-const chartOptions = useMemo(() => {
+  const chartOptions = useMemo(() => {
   // Calculate dynamic min/max with ±10 buffer
-  let yMin = 0;
-  let yMax = 255;
-  if (seriesData.length > 0) {
+    let yMin = 0;
+    let yMax = 255;
+    if (seriesData.length > 0) {
     //i have kept auto sclaing for last 100 poinnts 
     const recentData = seriesData.slice(-AUTO_SCALE_POINTS); // last N points
-    const minVal = Math.min(...recentData);
-    const maxVal = Math.max(...recentData);
+      const minVal = Math.min(...recentData);
+      const maxVal = Math.max(...recentData);
     yMin = Math.max(minVal - 10, 0);   // buffer -10
     yMax = Math.min(maxVal + 10, 255); // buffer +10
-  }
+    }
 
-  console.log("Y-Axis Range:", yMin, yMax);
-
-  return {
-    chart: {
-      id: "intensity-line-chart",
-      type: "line",
-      animations: { enabled: true, easing: "linear", dynamicAnimation: { speed: 200 } },
-      toolbar: { show: false },
-      zoom: { enabled: false },
-      foreColor: "#00ff00",
-      background: "transparent",
-    },
-    stroke: { curve: "smooth", width: 2, colors: ["#00ff00"] },
-    grid: { borderColor: "#333", strokeDashArray: 3 },
-    dataLabels: { enabled: false },
-    markers: { size: 0 },
-    xaxis: {
-      title: { text: "Time (frames)", style: { color: "#ccc" } },
-      labels: { show: false, style: { colors: "#ccc" } },
-    },
-    yaxis: {
-      min: yMin,
-      max: yMax,
-      tickAmount: 5,
-      title: { text: "Intensity", style: { color: "#ccc" } },
-      labels: { formatter: (val) => Math.round(val), style: { colors: "#ccc" } },
-    },
-    tooltip: { enabled: false },
-    theme: { mode: "dark" },
-  };
-}, [seriesData, maxPoints]);
-
+    return {
+      chart: {
+        id: "intensity-line-chart",
+        type: "line",
+        animations: {
+          enabled: true,
+          easing: "linear",
+          dynamicAnimation: { speed: 200 },
+        },
+        toolbar: { show: false },
+        zoom: { enabled: false },
+        foreColor: theme === "dark" ? "#00ff00" : "#000000",
+        background: "transparent",
+      },
+      stroke: {
+        curve: "smooth",
+        width: 2,
+        colors: [theme === "dark" ? "#00ff00" : "#0077ff"],
+      },
+      grid: {
+        borderColor: theme === "dark" ? "#333" : "#ccc",
+        strokeDashArray: 3,
+      },
+      dataLabels: { enabled: false },
+      markers: { size: 0 },
+      xaxis: {
+        title: { text: "Time (frames)" },
+        labels: { show: false },
+      },
+      yaxis: {
+        min: yMin,
+        max: yMax,
+        tickAmount: 5,
+        title: { text: "Intensity" },
+        labels: { formatter: (val) => Math.round(val) },
+      },
+      tooltip: { enabled: false },
+      theme: { mode: theme },
+    };
+  }, [seriesData, theme, maxPoints]);
 
   const chartSeries = useMemo(
     () => [{ name: "Avg Intensity", data: seriesData }],
@@ -178,6 +178,7 @@ const chartOptions = useMemo(() => {
       stopRecording();
     } else {
       setSeriesData([]);
+      setExportData([]);
       setShowGraph(true);
       setIsRecording(true);
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -185,37 +186,68 @@ const chartOptions = useMemo(() => {
     }
   };
 
+  // 🎨 Theme styles
+  const isDark = theme === "dark";
+  const bgGradient = isDark
+    ? "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"
+    : "linear-gradient(135deg, #ffffff 0%, #f3f4f6 50%, #e5e7eb 100%)";
+  const textColor = isDark ? "#e0e0e0" : "#111";
+  const cardBg = isDark
+    ? "rgba(26, 26, 46, 0.8)"
+    : "rgba(255, 255, 255, 0.8)";
+  const borderColor = isDark ? "#2d3748" : "#ddd";
+
   return (
     <div
       style={{
         minHeight: "100vh",
-        background:
-          "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
-        color: "#e0e0e0",
+        background: bgGradient,
+        color: textColor,
         padding: "20px 0",
+        transition: "all 0.4s ease",
       }}
     >
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 20px" }}>
         <div style={{ textAlign: "center", marginBottom: "32px" }}>
           <h1
-            style={{
-              margin: 0,
-              marginBottom: "8px",
-              fontSize: "2.5rem",
-              fontWeight: "700",
-              background: "linear-gradient(45deg, #6366f1, #8b5cf6)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
+         
           >
             Web Camera Intensity Monitor (Single-Frame Avg)
           </h1>
-          <p style={{ color: "#a0a0a0" }}>
-            Real-time overall brightness tracking — useful for PPG/SpO₂ signal visualization
+          <p style={{ color: isDark ? "#a0a0a0" : "#333" }}>
+            Real-time brightness tracking — useful for PPG/SpO₂ signal
+            visualization
           </p>
+
+          {/* 🌗 Theme Switch Button */}
+          <button
+            onClick={() => setTheme(isDark ? "light" : "dark")}
+            style={{
+              marginTop: "10px",
+              padding: "10px 20px",
+              borderRadius: "8px",
+              border: 0,
+              cursor: "pointer",
+              background: isDark
+                ? "linear-gradient(45deg, #facc15, #f59e0b)"
+                : "linear-gradient(45deg, #1e3a8a, #3b82f6)",
+              color: "#fff",
+              fontWeight: "600",
+              transition: "0.3s",
+            }}
+          >
+            {isDark ? "☀️ Light Mode" : "🌙 Dark Mode"}
+          </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px" }}>
+        {/* 🧩 Layout */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "32px",
+          }}
+        >
           <div>
             <video
               ref={videoRef}
@@ -227,7 +259,7 @@ const chartOptions = useMemo(() => {
               style={{
                 display: "block",
                 borderRadius: "12px",
-                border: "2px solid #2d3748",
+                border: `2px solid ${borderColor}`,
                 boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
               }}
             />
@@ -235,14 +267,15 @@ const chartOptions = useMemo(() => {
 
           <div
             style={{
-              background: "rgba(26, 26, 46, 0.8)",
+              background: cardBg,
               borderRadius: "16px",
               padding: "24px",
-              border: "1px solid #2d3748",
+              border: `1px solid ${borderColor}`,
               backdropFilter: "blur(10px)",
             }}
           >
             <h3>⚙️ Settings</h3>
+            {/* Settings inputs remain same */}
             <div style={{ marginBottom: "16px" }}>
               <label>Sampling Rate (fps): </label>
               <input
@@ -258,9 +291,9 @@ const chartOptions = useMemo(() => {
                 style={{
                   marginLeft: "8px",
                   padding: "6px 10px",
-                  background: "#1a1a2e",
-                  border: "1px solid #2d3748",
-                  color: "#e0e0e0",
+                  background: isDark ? "#1a1a2e" : "#f9fafb",
+                  border: `1px solid ${borderColor}`,
+                  color: textColor,
                   borderRadius: "8px",
                 }}
               />
@@ -276,15 +309,18 @@ const chartOptions = useMemo(() => {
                 value={maxPoints}
                 onChange={(e) =>
                   setMaxPoints(
-                    Math.max(100, Math.min(10000, parseInt(e.target.value) || 3000))
+                    Math.max(
+                      100,
+                      Math.min(10000, parseInt(e.target.value) || 3000)
+                    )
                   )
                 }
                 style={{
                   marginLeft: "8px",
                   padding: "6px 10px",
-                  background: "#1a1a2e",
-                  border: "1px solid #2d3748",
-                  color: "#e0e0e0",
+                  background: isDark ? "#1a1a2e" : "#f9fafb",
+                  border: `1px solid ${borderColor}`,
+                  color: textColor,
                   borderRadius: "8px",
                 }}
               />
@@ -309,61 +345,64 @@ const chartOptions = useMemo(() => {
               {isRecording ? "⏹️ Stop Recording" : "▶️ Start Measurement"}
             </button>
 
-<div style={{ display: "flex", gap: "16px", marginTop: "16px" }}>
-  <button
-    onClick={handleExportCSV}
-    disabled={seriesData.length === 0}
-    style={{
-      flex: 1,
-      padding: "14px",
-      borderRadius: "8px",
-      border: 0,
-      cursor: seriesData.length === 0 ? "not-allowed" : "pointer",
-      background: seriesData.length === 0
-        ? "gray"
-        : "linear-gradient(45deg, #6366f1, #4f46e5)",
-      color: "#fff",
-      fontWeight: "600",
-      fontSize: "1rem",
-      opacity: seriesData.length === 0 ? 0.6 : 1,
-    }}
-  >
-    Export CSV
-  </button>
+            {/* Export buttons remain same */}
+            <div style={{ display: "flex", gap: "16px", marginTop: "16px" }}>
+              <button
+                onClick={handleExportCSV}
+                disabled={seriesData.length === 0}
+                style={{
+                  flex: 1,
+                  padding: "14px",
+                  borderRadius: "8px",
+                  border: 0,
+                  cursor:
+                    seriesData.length === 0 ? "not-allowed" : "pointer",
+                  background:
+                    seriesData.length === 0
+                      ? "gray"
+                      : "linear-gradient(45deg, #6366f1, #4f46e5)",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "1rem",
+                  opacity: seriesData.length === 0 ? 0.6 : 1,
+                }}
+              >
+                Export CSV
+              </button>
 
-  <button
-    onClick={handleExportJSON}
-    disabled={seriesData.length === 0}
-    style={{
-      flex: 1,
-      padding: "14px",
-      borderRadius: "8px",
-      border: 0,
-      cursor: seriesData.length === 0 ? "not-allowed" : "pointer",
-      background: seriesData.length === 0
-        ? "gray"
-        : "linear-gradient(45deg, #10b981, #059669)", // green gradient
-      color: "#fff",
-      fontWeight: "600",
-      fontSize: "1rem",
-      opacity: seriesData.length === 0 ? 0.6 : 1,
-    }}
-  >
-    Export JSON
-  </button>
-</div>
-
-
+              <button
+                onClick={handleExportJSON}
+                disabled={seriesData.length === 0}
+                style={{
+                  flex: 1,
+                  padding: "14px",
+                  borderRadius: "8px",
+                  border: 0,
+                  cursor:
+                    seriesData.length === 0 ? "not-allowed" : "pointer",
+                  background:
+                    seriesData.length === 0
+                      ? "gray"
+                      : "linear-gradient(45deg, #10b981, #059669)",
+                  color: "#fff",
+                  fontWeight: "600",
+                  fontSize: "1rem",
+                  opacity: seriesData.length === 0 ? 0.6 : 1,
+                }}
+              >
+                Export JSON
+              </button>
+            </div>
           </div>
         </div>
 
         {showGraph && (
           <div
             style={{
-              background: "rgba(26, 26, 46, 0.8)",
+              background: cardBg,
               borderRadius: "16px",
               padding: "24px",
-              border: "1px solid #2d3748",
+              border: `1px solid ${borderColor}`,
               marginTop: "32px",
             }}
           >
