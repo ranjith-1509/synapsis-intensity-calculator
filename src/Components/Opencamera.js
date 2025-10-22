@@ -13,15 +13,60 @@ const Opencamera = () => {
   const [seriesData, setSeriesData] = useState([]);
   const [exportData, setExportData] = useState([]);
   const [theme, setTheme] = useState("light"); // 🌙 new state for theme
+  const [isFrontCamera, setIsFrontCamera] = useState(true); // 📷 camera toggle state
   const intervalRef = useRef(null);
   const [targetFps, setTargetFps] = useState(DEFAULT_TARGET_FPS);
   const [maxPoints, setMaxPoints] = useState(DEFAULT_MAX_POINTS);
+
+  // Function to get camera stream with specific facing mode
+  const getCameraStream = async (facingMode) => {
+    try {
+      const constraints = {
+        video: { 
+          facingMode: facingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }, 
+        audio: false 
+      };
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      console.error(`Error accessing ${facingMode} camera:`, err);
+      // Fallback to any available camera
+      try {
+        return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      } catch (fallbackErr) {
+        console.error("Error accessing any camera:", fallbackErr);
+        throw fallbackErr;
+      }
+    }
+  };
+
+  // Function to switch camera
+  const switchCamera = async () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      // Stop current stream
+      const currentStream = videoRef.current.srcObject;
+      currentStream.getTracks().forEach(track => track.stop());
+    }
+    
+    try {
+      const newFacingMode = isFrontCamera ? "environment" : "user";
+      const stream = await getCameraStream(newFacingMode);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsFrontCamera(!isFrontCamera);
+    } catch (err) {
+      console.error("Error switching camera:", err);
+    }
+  };
 
   useEffect(() => {
     let isCancelled = false;
     (async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const stream = await getCameraStream("user"); // Start with front camera
         if (isCancelled) return;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -238,6 +283,27 @@ const Opencamera = () => {
           >
             {isDark ? "☀️ Light Mode" : "🌙 Dark Mode"}
           </button>
+
+          {/* 📷 Camera Toggle Button */}
+          <button
+            onClick={switchCamera}
+            style={{
+              marginTop: "10px",
+              marginLeft: "10px",
+              padding: "10px",
+              borderRadius: "8px",
+              border: 0,
+              cursor: "pointer",
+              background: isDark
+                ? "linear-gradient(45deg, #10b981, #059669)"
+                : "linear-gradient(45deg, #7c3aed, #5b21b6)",
+              color: "#fff",
+              fontWeight: "600",
+              transition: "0.3s",
+            }}
+          >
+
+ switch     </button>
         </div>
 
         {/* 🧩 Layout */}
