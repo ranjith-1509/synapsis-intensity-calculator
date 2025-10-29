@@ -169,8 +169,8 @@ const Opencamera = () => {
     const recentData = seriesData.slice(-AUTO_SCALE_POINTS); // last N points
       const minVal = Math.min(...recentData);
       const maxVal = Math.max(...recentData);
-    yMin = Math.max(minVal - 10, 0);   // buffer -10
-    yMax = Math.min(maxVal + 10, 255); // buffer +10
+    yMin = Math.max(minVal - 5, 0);   // buffer -10
+    yMax = Math.min(maxVal + 5, 255); // buffer +10
     }
 
     return {
