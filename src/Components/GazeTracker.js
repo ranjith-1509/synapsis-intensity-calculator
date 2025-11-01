@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { FilesetResolver, FaceLandmarker } from "@mediapipe/tasks-vision";
 import ReactApexChart from "react-apexcharts";
 
 const SMOOTHING_ALPHA = 0.25;
+const AUTO_SCALE_POINTS = 1000; // Number of recent points to use for auto-scaling
 
 export default function GazeTracker() {
   const videoRef = useRef(null);
@@ -327,7 +328,7 @@ export default function GazeTracker() {
       if (lastPupilRef.current != null) {
         const dilation = normalizedPupil - lastPupilRef.current;
         setPupilSamples((prev) =>
-          prev.concat({ x: (elapsed / 1000).toFixed(2), y: dilation})
+          prev.concat({ x: (elapsed / 1000).toFixed(2), y: dilation.toFixed(2)})
         );
       }
       lastPupilRef.current = normalizedPupil;
@@ -352,6 +353,44 @@ export default function GazeTracker() {
       rafRef.current = requestAnimationFrame(loop);
     }
   };
+
+  // Auto-scale x and y axes based on recent data points
+  const { xMin, xMax, yMin, yMax } = useMemo(() => {
+    if (samples.length === 0) {
+      return {
+        xMin: 0,
+        xMax: window.innerWidth,
+        yMin: 0,
+        yMax: window.innerHeight,
+      };
+    }
+
+    const recentData = samples.slice(-AUTO_SCALE_POINTS);
+    const xValues = recentData.map((s) => s.x).filter((v) => v != null);
+    const yValues = recentData.map((s) => s.y).filter((v) => v != null);
+
+    if (xValues.length === 0 || yValues.length === 0) {
+      return {
+        xMin: 0,
+        xMax: window.innerWidth,
+        yMin: 0,
+        yMax: window.innerHeight,
+      };
+    }
+
+    const xMinVal = Math.min(...xValues);
+    const xMaxVal = Math.max(...xValues);
+    const yMinVal = Math.min(...yValues);
+    const yMaxVal = Math.max(...yValues);
+
+
+    return {
+      xMin: Math.max(xMinVal - 100, 0),
+      xMax: Math.min(xMaxVal + 100, window.innerWidth),
+      yMin: Math.max(yMinVal - 100, 0),
+      yMax: Math.min(yMaxVal + 100, window.innerHeight),
+    };
+  }, [samples]);
 
   return (
     <div style={{ 
@@ -655,8 +694,8 @@ export default function GazeTracker() {
                       text: "Horizontal Gaze (x)", 
                       style: { fontSize: 14, fontWeight: 600, color: "#4a5568" }
                     }, 
-                    min: 0, 
-                    max: window.innerWidth,
+                    min: xMin, 
+                    max: xMax,
                     labels: { style: { colors: "#718096", fontSize: 12 } },
                   },
                   yaxis: { 
@@ -664,8 +703,8 @@ export default function GazeTracker() {
                       text: "Vertical Gaze (y)", 
                       style: { fontSize: 14, fontWeight: 600, color: "#4a5568" }
                     }, 
-                    min: 0, 
-                    max: window.innerHeight,
+                    min: yMin, 
+                    max: yMax,
                     labels: { style: { colors: "#718096", fontSize: 12 } },
                   },
                   colors: ["#3182ce"],
@@ -676,12 +715,17 @@ export default function GazeTracker() {
                   markers: { size: 4 },
                 }}
                 height="100%"
+        
               />
             </div>
           </div>
 
-          {/* Pupil Dilation Chart */}
-          <div style={{
+     
+        </div>
+        
+      </div>
+           {/* Pupil Dilation Chart */}
+           <div style={{
             background: "white",
             borderRadius: 12,
             padding: "clamp(12px, 2vw, 20px)",
@@ -744,8 +788,6 @@ export default function GazeTracker() {
               />
             </div>
           </div>
-        </div>
-      </div>
     </div>
   );
 }
