@@ -667,7 +667,7 @@ export default function GazeTracker() {
               fontWeight: 700, 
               color: "#1a202c",
             }}>
-              Eye Fixation Map
+              Eye Fixation Map.
             </h2>
             <div style={{ flex: 1, minHeight: 0 }}>
               <ReactApexChart
