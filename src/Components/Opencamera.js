@@ -3,7 +3,7 @@ import ReactApexChart from "react-apexcharts";
 import { calculateHRMetrics } from "../Utils/hrUtils";
 
 const DEFAULT_TARGET_FPS = 30;
-const DEFAULT_MAX_POINTS = 3000;
+const DEFAULT_MAX_POINTS = 100;
 const AUTO_SCALE_POINTS = 100;
 
 const Opencamera = () => {
