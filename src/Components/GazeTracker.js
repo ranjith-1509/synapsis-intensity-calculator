@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import { FilesetResolver, FaceLandmarker } from "@mediapipe/tasks-vision";
 import ReactApexChart from "react-apexcharts";
 import VideoModal from "../Modals/VideoModal";
+import YouTubeModal from "../Modals/YouTubeModal";
 import SampleVideo from "../Video/Eyetracking.mp4";
 import { Button } from "antd";
+import extractYouTubeId from "../utils/extractYoutubeID";
 
 const SMOOTHING_ALPHA = 0.25;
 const AUTO_SCALE_POINTS = 1000; // Number of recent points to use for auto-scaling
@@ -27,6 +29,9 @@ export default function GazeTracker() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [open, setOpen] = useState(false);
   const [replaying, setReplaying] = useState(false);
+  const [openYouTube, setOpenYouTube] = useState(false);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [youtubeId, setYoutubeId] = useState("");
 
   useEffect(() => {
     const getStream = async () => {
@@ -532,6 +537,33 @@ export default function GazeTracker() {
           >
             {isInitializing ? "Loading..." : "▶ Play Video"}
           </Button>
+          <input
+            type="text"
+            value={youtubeUrl}
+            onChange={(e) => setYoutubeUrl(e.target.value)}
+            placeholder="Paste YouTube URL"
+            style={{
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid #e2e8f0",
+              minWidth: "220px",
+              fontSize: "clamp(12px, 2vw, 14px)",
+              outline: "none",
+            }}
+          />
+          <Button
+            disabled={
+              isInitializing || isTracking || !extractYouTubeId(youtubeUrl)
+            }
+            onClick={() => {
+              const id = extractYouTubeId(youtubeUrl);
+              if (!id) return;
+              setYoutubeId(id);
+              setOpenYouTube(true);
+            }}
+          >
+            {isInitializing ? "Loading..." : "▶ Play URL"}
+          </Button>
           <Button
             onClick={handleReplay}
             disabled={replaying || samples.length === 0}
@@ -982,6 +1014,14 @@ export default function GazeTracker() {
         title="Eye Fixation Demo"
         isInitializing={isInitializing}
         stopTracking={stopTracking}
+      />
+      <YouTubeModal
+        open={openYouTube}
+        onClose={() => setOpenYouTube(false)}
+        videoId={youtubeId}
+        title="YouTube Player"
+        onPlayStart={setupAndStart}
+        onPauseStop={stopTracking}
       />
     </div>
   );
