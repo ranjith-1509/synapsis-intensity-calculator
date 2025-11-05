@@ -227,6 +227,7 @@ const Opencamera = () => {
 
   return (
     <div
+      className="page-container"
       style={{
         minHeight: "100vh",
         background: isDark
@@ -234,8 +235,6 @@ const Opencamera = () => {
           : "linear-gradient(135deg,#ffffff,#f1f5f9)",
         color: textColor,
         padding: "16px",
-        paddingRight: 192,
-        paddingBottom: 192,
         transition: "all 0.3s ease",
         display: "flex",
         flexDirection: "column",
@@ -270,15 +269,57 @@ const Opencamera = () => {
         >
           🔄 Switch Camera
         </button>
+        <button
+          onClick={handleCalculate}
+          style={{
+            padding: "8px 16px",
+            borderRadius: 8,
+            border: "none",
+            background: isRecording ? "#ef4444" : "#2563eb",
+            color: "#fff",
+            fontWeight: 600,
+          }}
+        >
+          {isRecording ? "⏹️ Stop" : "▶️ Start"}
+        </button>
+        <button
+          onClick={() => handleExport("csv")}
+          disabled={!seriesData.length}
+          style={{
+            padding: "8px 16px",
+            borderRadius: 8,
+            border: "none",
+            background: seriesData.length ? "#3b82f6" : "#9ca3af",
+            color: "#fff",
+            fontWeight: 600,
+          }}
+        >
+          Export CSV
+        </button>
+        <button
+          onClick={() => handleExport("json")}
+          disabled={!seriesData.length}
+          style={{
+            padding: "8px 16px",
+            borderRadius: 8,
+            border: "none",
+            background: seriesData.length ? "#10b981" : "#9ca3af",
+            color: "#fff",
+            fontWeight: 600,
+          }}
+        >
+          Export JSON
+        </button>
       </div>
 
       {/* Sticky Camera Preview */}
       <div
+        className="sticky-camera"
         style={{
           width: 160,
           height: 160,
           position: "fixed",
-          bottom: 16,
+          top: 16,
           right: 16,
           borderRadius: "12px",
           overflow: "hidden",
@@ -333,57 +374,9 @@ const Opencamera = () => {
         </div>
       </div>
 
-      {/* Controls */}
-      <button
-        onClick={handleCalculate}
-        style={{
-          padding: "14px 32px",
-          borderRadius: 8,
-          border: "none",
-          background: isRecording ? "#ef4444" : "#2563eb",
-          color: "#fff",
-          fontWeight: 600,
-          fontSize: "1rem",
-          marginBottom: 20,
-        }}
-      >
-        {isRecording ? "⏹️ Stop" : "▶️ Start"}
-      </button>
-
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-        <button
-          onClick={() => handleExport("csv")}
-          disabled={!seriesData.length}
-          style={{
-            padding: "10px 20px",
-            borderRadius: 8,
-            border: "none",
-            background: seriesData.length ? "#3b82f6" : "#9ca3af",
-            color: "#fff",
-            fontWeight: 600,
-          }}
-        >
-          Export CSV
-        </button>
-        <button
-          onClick={() => handleExport("json")}
-          disabled={!seriesData.length}
-          style={{
-            padding: "10px 20px",
-            borderRadius: 8,
-            border: "none",
-            background: seriesData.length ? "#10b981" : "#9ca3af",
-            color: "#fff",
-            fontWeight: 600,
-          }}
-        >
-          Export JSON
-        </button>
-      </div>
-
       {/* Charts */}
       {showGraph && (
-        <div style={{ width: "100%", maxWidth: 1024, display: "grid", gap: 16, gridTemplateColumns: "1fr" }}>
+        <div className="charts-wrapper" style={{ width: "100%", maxWidth: 1200, margin: "0 auto", display: "grid", gap: 16, gridTemplateColumns: "1fr" }}>
           {/* HR Chart */}
           <div style={{ background: isDark ? "rgba(30,41,59,0.6)" : "#fff", borderRadius: 12, padding: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.15)" }}>
             {hrSeries.length === 0 ? (
@@ -426,7 +419,17 @@ const Opencamera = () => {
 
       {/* Shimmer keyframes */}
       <style>
-        {`@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }`}
+        {`@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+          @media (max-width: 640px) {
+            .page-container { padding-right: 112px; }
+            .sticky-camera { width: 120px !important; height: 120px !important; top: 12px !important; right: 12px !important; }
+            .charts-wrapper { max-width: 100% !important; }
+          }
+          @media (min-width: 641px) {
+            .page-container { padding-right: 192px; }
+            .sticky-camera { width: 160px !important; height: 160px !important; }
+          }
+        `}
       </style>
     </div>
   );
