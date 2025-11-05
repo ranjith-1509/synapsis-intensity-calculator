@@ -22,6 +22,7 @@ const Opencamera = () => {
   const [hrv, setHrv] = useState(0);
   const [hrSeries,  setHrSeries] = useState([]);
   const [hrvSeries, setHrvSeries] = useState([]);
+  const [isCamCollapsed, setIsCamCollapsed] = useState(false);
 
   const targetFps = DEFAULT_TARGET_FPS;
   const maxPoints = DEFAULT_MAX_POINTS;
@@ -242,7 +243,7 @@ const Opencamera = () => {
       }}
     >
       <h2 style={{ marginBottom: 8, textAlign: "center" }}>💓 Heart Rate Monitor</h2>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", justifyContent: "center" }}>
+      <div className="controls-bar" style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", justifyContent: "center", width: "100%", maxWidth: 1200, position: "relative", zIndex: 60 }}>
         <button
           onClick={() => setTheme(isDark ? "light" : "dark")}
           style={{
@@ -314,10 +315,10 @@ const Opencamera = () => {
 
       {/* Sticky Camera Preview */}
       <div
-        className="sticky-camera"
+        className={`sticky-camera ${isCamCollapsed ? 'collapsed' : ''}`}
         style={{
-          width: 160,
-          height: 160,
+          width: isCamCollapsed ? 96 : 160,
+          height: isCamCollapsed ? 96 : 160,
           position: "fixed",
           top: 16,
           right: 16,
@@ -325,11 +326,21 @@ const Opencamera = () => {
           overflow: "hidden",
           border: `3px solid ${isDark ? "#22d3ee" : "#3b82f6"}`,
           boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-          zIndex: 50,
+          zIndex: 40,
           background: isDark ? "#0b1220" : "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
         <video ref={videoRef} autoPlay playsInline muted width="100%" height="100%" style={{ objectFit: "cover" }} />
+        <button
+          onClick={() => setIsCamCollapsed((v) => !v)}
+          style={{ position: "absolute", top: 6, left: 6, background: "rgba(0,0,0,0.5)", color: "#fff", border: "none", borderRadius: 6, padding: "2px 6px", fontSize: 12, cursor: "pointer" }}
+          aria-label={isCamCollapsed ? "Expand camera" : "Collapse camera"}
+        >
+          {isCamCollapsed ? "↗" : "↘"}
+        </button>
       </div>
 
       {/* Metrics */}
@@ -417,17 +428,22 @@ const Opencamera = () => {
 
       <canvas ref={canvasRef} style={{ display: "none" }} />
 
-      {/* Shimmer keyframes */}
+      {/* Styles: shimmer + responsive layout and safe areas */}
       <style>
         {`@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+          /* Mobile: place camera bottom-right, add safe bottom padding */
           @media (max-width: 640px) {
-            .page-container { padding-right: 112px; }
-            .sticky-camera { width: 120px !important; height: 120px !important; top: 12px !important; right: 12px !important; }
+            .page-container { padding-right: 112px; padding-bottom: 128px; }
+            .sticky-camera { width: 120px !important; height: 120px !important; top: auto !important; bottom: 12px !important; right: 12px !important; z-index: 40 !important; }
+            .sticky-camera.collapsed { width: 96px !important; height: 96px !important; }
+            .controls-bar { justify-content: center; position: relative; z-index: 60; }
             .charts-wrapper { max-width: 100% !important; }
           }
+          /* Desktop: place camera top-right, add safe top padding */
           @media (min-width: 641px) {
-            .page-container { padding-right: 192px; }
-            .sticky-camera { width: 160px !important; height: 160px !important; }
+            .page-container { padding-right: 192px; padding-top: 112px; }
+            .sticky-camera { width: 160px !important; height: 160px !important; top: 16px !important; right: 16px !important; z-index: 40 !important; }
+            .sticky-camera.collapsed { width: 96px !important; height: 96px !important; }
           }
         `}
       </style>
