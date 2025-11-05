@@ -142,58 +142,71 @@ const removeOutliers = (rrIntervals) => {
  * @param {number} targetFps - Frames per second (default: 30)
  * @returns {Object|null} - { heartRate: number (BPM), hrv: number (ms, SDNN) } or null if insufficient data
  */
-export const calculateHRMetrics = (data, targetFps = 30) => {
-  // Need at least 3 seconds of data at 30fps (90 samples) for reliable detection
-  // Minimum for one complete heartbeat cycle at lowest HR (45 BPM = 1.33s = 40 frames at 30fps)
+// Updated calculateHRMetrics to also return HR + HRV series (preserving original logic)
+
+// ... PLACE YOUR EXISTING detrend, bandPassFilter, detectPeaks, removeOutliers FUNCTIONS ABOVE ...
+
+/**
+ * Calculate HR (Heart Rate) and HRV (Heart Rate Variability)
+ * Now ALSO returns:
+ *   hrSeries:  [{ x: timestamp(ms), y: bpm }]
+ *   hrvSeries: [{ x: timestamp(ms), y: ms  }]
+ *
+ * No logic changed for core HR / HRV computation.
+ */
+export const calculateHRMetrics = (
+  data,
+  targetFps = 30,
+  prevHrSeries = [],
+  prevHrvSeries = []
+) => {
   if (!data || data.length < 50) return null;
-  
-  // Step 1-2: Data is already formatted as time series (hemoglobin/intensity component)
-  
-  // Step 3: Detrending - remove slow baseline variations
+
   const detrended = detrend(data);
-  
-  // Step 4: Band-pass filter (0.75-3.0 Hz = 45-180 BPM)
   const filtered = bandPassFilter(detrended, targetFps, 0.75, 3.0);
-  
-  // Step 5: Detect local peaks of BVP waveform
   const peaks = detectPeaks(filtered, null, targetFps);
-  
-  if (peaks.length < 2) return null; // Need at least 2 peaks for one RR interval
-  
-  // Step 6: Calculate RR intervals (time between consecutive peaks)
+
+  if (peaks.length < 2) return null;
+
   const frameIntervalMs = 1000 / targetFps;
   const rrIntervals = [];
   for (let i = 1; i < peaks.length; i++) {
     const diff = (peaks[i] - peaks[i - 1]) * frameIntervalMs;
-    // Validate RR interval (should be between 333ms-1333ms for 45-180 BPM)
     if (diff >= 333 && diff <= 1333) {
       rrIntervals.push(diff);
     }
   }
-  
+
   if (rrIntervals.length < 2) return null;
-  
-  // Remove outliers using MAD
+
   const cleanedRR = removeOutliers(rrIntervals);
   if (cleanedRR.length < 2) return null;
-  
-  // Step 7: Calculate HR and HRV metrics
+
   const avgRR = cleanedRR.reduce((a, b) => a + b, 0) / cleanedRR.length;
-  const hr = 60000 / avgRR; // BPM
-  
-  // HRV (SDNN) = Standard Deviation of Normal-to-Normal intervals
+  const hr = 60000 / avgRR;
+
   const mean = avgRR;
   const variance =
     cleanedRR.reduce((sum, val) => sum + (val - mean) ** 2, 0) /
     cleanedRR.length;
   const sdnn = Math.sqrt(variance);
-  
-  // Validate HR is within physiological range
+
   if (hr < 40 || hr > 200) return null;
-  
+
+  const heartRate = parseFloat(hr.toFixed(1));
+  const hrv = parseFloat(sdnn.toFixed(1));
+
+  const t = Date.now();
+
+  const hrSeries = [...prevHrSeries, { x: t, y: heartRate }];
+  const hrvSeries = [...prevHrvSeries, { x: t, y: hrv }];
+
   return {
-    heartRate: parseFloat(hr.toFixed(1)),
-    hrv: parseFloat(sdnn.toFixed(1)),
+    heartRate,
+    hrv,
+    hrSeries,
+    hrvSeries,
   };
 };
+
   

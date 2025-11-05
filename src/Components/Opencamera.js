@@ -4,21 +4,24 @@ import { calculateHRMetrics } from "../Utils/hrUtils";
 
 const DEFAULT_TARGET_FPS = 30;
 const DEFAULT_MAX_POINTS = 100;
-const AUTO_SCALE_POINTS = 100;
 
 const Opencamera = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const intervalRef = useRef(null);
+  const startTimeRef = useRef(null);
 
   const [isRecording, setIsRecording] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
   const [seriesData, setSeriesData] = useState([]);
+  const [intensitySeries, setIntensitySeries] = useState([]);
   const [exportData, setExportData] = useState([]);
   const [theme, setTheme] = useState("light");
   const [isFrontCamera, setIsFrontCamera] = useState(true);
   const [heartRate, setHeartRate] = useState(0);
   const [hrv, setHrv] = useState(0);
+  const [hrSeries,  setHrSeries] = useState([]);
+  const [hrvSeries, setHrvSeries] = useState([]);
 
   const targetFps = DEFAULT_TARGET_FPS;
   const maxPoints = DEFAULT_MAX_POINTS;
@@ -78,7 +81,20 @@ const Opencamera = () => {
     }
 
     const avgIntensity = totalIntensity / pixelCount;
+
+    const now = Date.now();
+    if (!startTimeRef.current) startTimeRef.current = now;
+
     setExportData((p) => [...p, avgIntensity]);
+
+    // Keep a separate time-series for intensity
+    setIntensitySeries((prev) => {
+      const next = prev.length >= maxPoints ? prev.slice(prev.length - (maxPoints - 1)) : prev.slice();
+      next.push({ x: now, y: Number(avgIntensity.toFixed(2)) });
+      return next;
+    });
+
+    // Maintain raw values for HR detection
     setSeriesData((p) => {
       const next = p.length >= maxPoints ? p.slice(p.length - (maxPoints - 1)) : p.slice();
       next.push(avgIntensity);
@@ -86,6 +102,17 @@ const Opencamera = () => {
       if (result) {
         setHeartRate(result.heartRate);
         setHrv(result.hrv);
+
+        setHrSeries((prev) => {
+          const seriesNext = prev.length >= maxPoints ? prev.slice(prev.length - (maxPoints - 1)) : prev.slice();
+          seriesNext.push({ x: now, y: result.heartRate });
+          return seriesNext;
+        });
+        setHrvSeries((prev) => {
+          const seriesNext = prev.length >= maxPoints ? prev.slice(prev.length - (maxPoints - 1)) : prev.slice();
+          seriesNext.push({ x: now, y: result.hrv });
+          return seriesNext;
+        });
       }
       return next;
     });
@@ -98,6 +125,10 @@ const Opencamera = () => {
     } else {
       setSeriesData([]);
       setExportData([]);
+      setIntensitySeries([]);
+      setHrSeries([]);
+      setHrvSeries([]);
+      startTimeRef.current = null;
       setShowGraph(true);
       setIsRecording(true);
       intervalRef.current = setInterval(processFrame, 1000 / targetFps);
@@ -117,26 +148,79 @@ const Opencamera = () => {
     link.click();
   };
 
-  const chartOptions = useMemo(() => {
-    let yMin = 0,
-      yMax = 255;
-    if (seriesData.length > 0) {
-      const recent = seriesData.slice(-AUTO_SCALE_POINTS);
-      const min = Math.min(...recent),
-        max = Math.max(...recent);
+  const intensityOptions = useMemo(() => {
+    let yMin = 0, yMax = 255;
+    if (intensitySeries.length > 0) {
+      const values = intensitySeries.map((p) => p.y);
+      const min = Math.min(...values), max = Math.max(...values);
+      yMin = Math.max(min - 1, 0);
+      yMax = Math.min(max + 1, 255);
+    }
+    return {
+      chart: { type: "line", animations: { enabled: true }, toolbar: { show: false }, zoom: { enabled: false } },
+      stroke: { curve: "smooth", width: 2, colors: [theme === "dark" ? "#10b981" : "#14b8a6"] },
+      grid: { borderColor: theme === "dark" ? "#333" : "#ddd" },
+      dataLabels: { enabled: false },
+      xaxis: {
+        type: "datetime",
+        labels: { style: { colors: theme === "dark" ? "#e5e5e5" : "#111" } },
+        title: { text: "Time" },
+      },
+      yaxis: { min: yMin, max: yMax, title: { text: "Intensity" } },
+      theme: { mode: theme },
+      tooltip: { theme: theme },
+    };
+  }, [intensitySeries, theme]);
+
+  const hrvOptions = useMemo(() => {
+    let yMin = 0, yMax = 150;
+    if (hrvSeries.length > 0) {
+      const values = hrvSeries.map((p) => p.y);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
       yMin = Math.max(min - 5, 0);
-      yMax = Math.min(max + 5, 255);
+      yMax = max + 5;
+    }
+    return {
+      chart: { type: "line", animations: { enabled: true }, toolbar: { show: false }, zoom: { enabled: false } },
+      stroke: { curve: "smooth", width: 2, colors: [theme === "dark" ? "#a78bfa" : "#ec4899"] },
+      grid: { borderColor: theme === "dark" ? "#333" : "#ddd" },
+      dataLabels: { enabled: false },
+      xaxis: {
+        type: "datetime",
+        labels: { style: { colors: theme === "dark" ? "#e5e5e5" : "#111" } },
+        title: { text: "Time" },
+      },
+      yaxis: { min: yMin, max: yMax, title: { text: "HRV (ms)" } },
+      theme: { mode: theme },
+      tooltip: { theme: theme },
+    };
+  }, [hrvSeries, theme]);
+
+  const hrOptions = useMemo(() => {
+    let yMin = 40, yMax = 180;
+    if (hrSeries.length > 0) {
+      const values = hrSeries.map((p) => p.y);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      yMin = Math.max(min - 5, 40);
+      yMax = Math.min(max + 5, 200);
     }
     return {
       chart: { type: "line", animations: { enabled: true }, toolbar: { show: false }, zoom: { enabled: false } },
       stroke: { curve: "smooth", width: 2, colors: [theme === "dark" ? "#22d3ee" : "#3b82f6"] },
       grid: { borderColor: theme === "dark" ? "#333" : "#ddd" },
       dataLabels: { enabled: false },
-      xaxis: { labels: { show: false } },
-      yaxis: { min: yMin, max: yMax, title: { text: "Intensity" } },
+      xaxis: {
+        type: "datetime",
+        labels: { style: { colors: theme === "dark" ? "#e5e5e5" : "#111" } },
+        title: { text: "Time" },
+      },
+      yaxis: { min: yMin, max: yMax, title: { text: "Heart Rate (BPM)" } },
       theme: { mode: theme },
+      tooltip: { theme: theme },
     };
-  }, [seriesData, theme]);
+  }, [hrSeries, theme]);
 
   const isDark = theme === "dark";
   const textColor = isDark ? "#e5e5e5" : "#111";
@@ -150,6 +234,8 @@ const Opencamera = () => {
           : "linear-gradient(135deg,#ffffff,#f1f5f9)",
         color: textColor,
         padding: "16px",
+        paddingRight: 192,
+        paddingBottom: 192,
         transition: "all 0.3s ease",
         display: "flex",
         flexDirection: "column",
@@ -157,7 +243,7 @@ const Opencamera = () => {
       }}
     >
       <h2 style={{ marginBottom: 8, textAlign: "center" }}>💓 Heart Rate Monitor</h2>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", justifyContent: "center" }}>
         <button
           onClick={() => setTheme(isDark ? "light" : "dark")}
           style={{
@@ -186,22 +272,26 @@ const Opencamera = () => {
         </button>
       </div>
 
-      {/* Camera Preview (minimal circle view) */}
+      {/* Sticky Camera Preview */}
       <div
         style={{
           width: 160,
           height: 160,
-          borderRadius: "50%",
+          position: "fixed",
+          bottom: 16,
+          right: 16,
+          borderRadius: "12px",
           overflow: "hidden",
           border: `3px solid ${isDark ? "#22d3ee" : "#3b82f6"}`,
-          boxShadow: "0 0 20px rgba(0,0,0,0.3)",
-          marginBottom: 24,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          zIndex: 50,
+          background: isDark ? "#0b1220" : "#fff",
         }}
       >
         <video ref={videoRef} autoPlay playsInline muted width="100%" height="100%" style={{ objectFit: "cover" }} />
       </div>
 
-      {/* Heart Rate Display */}
+      {/* Metrics */}
       <div
         style={{
           display: "flex",
@@ -243,7 +333,7 @@ const Opencamera = () => {
         </div>
       </div>
 
-      {/* Buttons */}
+      {/* Controls */}
       <button
         onClick={handleCalculate}
         style={{
@@ -291,14 +381,53 @@ const Opencamera = () => {
         </button>
       </div>
 
+      {/* Charts */}
       {showGraph && (
-        <div style={{ width: "100%", maxWidth: 600, marginTop: 24 }}>
-          <ReactApexChart options={chartOptions} series={[{ data: seriesData.map(v => Number(v.toFixed(2))) }]}
- type="line" height={300} />
+        <div style={{ width: "100%", maxWidth: 1024, display: "grid", gap: 16, gridTemplateColumns: "1fr" }}>
+          {/* HR Chart */}
+          <div style={{ background: isDark ? "rgba(30,41,59,0.6)" : "#fff", borderRadius: 12, padding: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.15)" }}>
+            {hrSeries.length === 0 ? (
+              <div style={{ height: 280, borderRadius: 8, background: isDark ? "#1f2937" : "#f3f4f6", position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, transparent, ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}, transparent)`, transform: "translateX(-100%)", animation: "shimmer 1.5s infinite" }} />
+              </div>
+            ) : (
+              <ReactApexChart options={hrOptions} series={[{ name: "Heart Rate", data: hrSeries }]} type="line" height={300} />
+            )}
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8, textAlign: "center" }}>Heart Rate vs Time</div>
+          </div>
+
+          {/* HRV Chart */}
+          <div style={{ background: isDark ? "rgba(30,41,59,0.6)" : "#fff", borderRadius: 12, padding: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.15)" }}>
+            {hrvSeries.length === 0 ? (
+              <div style={{ height: 280, borderRadius: 8, background: isDark ? "#1f2937" : "#f3f4f6", position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, transparent, ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}, transparent)`, transform: "translateX(-100%)", animation: "shimmer 1.5s infinite" }} />
+              </div>
+            ) : (
+              <ReactApexChart options={hrvOptions} series={[{ name: "HRV", data: hrvSeries }]} type="line" height={300} />
+            )}
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8, textAlign: "center" }}>HRV vs Time</div>
+          </div>
+
+          {/* Intensity Chart */}
+          <div style={{ background: isDark ? "rgba(30,41,59,0.6)" : "#fff", borderRadius: 12, padding: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.15)" }}>
+            {intensitySeries.length === 0 ? (
+              <div style={{ height: 280, borderRadius: 8, background: isDark ? "#1f2937" : "#f3f4f6", position: "relative", overflow: "hidden" }}>
+                <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, transparent, ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}, transparent)`, transform: "translateX(-100%)", animation: "shimmer 1.5s infinite" }} />
+              </div>
+            ) : (
+              <ReactApexChart options={intensityOptions} series={[{ name: "Intensity", data: intensitySeries }]} type="line" height={300} />
+            )}
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8, textAlign: "center" }}>Intensity vs Time</div>
+          </div>
         </div>
       )}
 
       <canvas ref={canvasRef} style={{ display: "none" }} />
+
+      {/* Shimmer keyframes */}
+      <style>
+        {`@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }`}
+      </style>
     </div>
   );
 };
