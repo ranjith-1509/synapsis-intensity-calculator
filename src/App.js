@@ -1,10 +1,21 @@
-import Opencamera from './Components/Opencamera';
-
+import React, { useState } from "react";
+import Dashboard from "./Components/Dashboard";
+import HeartRateMeasuring from "./Components/HeartRateMeasuring";
 
 const App = () => {
+  const [currentPage, setCurrentPage] = useState("dashboard");
+
   return (
     <>
-      <Opencamera />
+      {currentPage === "dashboard" && (
+        <Dashboard onStartMeasuring={() => setCurrentPage("measuring")} />
+      )}
+      {currentPage === "measuring" && (
+        <HeartRateMeasuring
+          onBack={() => setCurrentPage("dashboard")}
+          onStop={() => setCurrentPage("dashboard")}
+        />
+      )}
     </>
   );
 };

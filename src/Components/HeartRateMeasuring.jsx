@@ -1,0 +1,508 @@
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import ReactApexChart from "react-apexcharts";
+import PrimaryButton from "./ui/PrimaryButton";
+import { calculateHRMetrics } from "../Utils/hrUtils";
+
+const DEFAULT_TARGET_FPS = 30;
+const DEFAULT_MAX_POINTS = 100;
+const HeartRateMeasuring = ({ onBack, onStop }) => {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const intervalRef = useRef(null);
+  const startTimeRef = useRef(null);
+  const theme = "light";
+  const [seriesData, setSeriesData] = useState([]); // raw intensity stream
+  const [intensitySeries, setIntensitySeries] = useState([]); // {x,y}
+  const [hrSeries, setHrSeries] = useState([]); // {x,y}
+  const [hrvSeries, setHrvSeries] = useState([]); // {x,y}
+  const [exportData, setExportData] = useState([]);
+  const [heartRate, setHeartRate] = useState(0);
+  const [hrv, setHrv] = useState(0);
+  const [isCamCollapsed, setIsCamCollapsed] = useState(false);
+
+  const targetFps = DEFAULT_TARGET_FPS;
+  const maxPoints = DEFAULT_MAX_POINTS;
+  const getCameraStream = async (facingMode) => {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: { facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      });
+    } catch (err) {
+      console.error("Camera access error:", err);
+    }
+  };
+  useEffect(() => {
+    if (videoRef.current) {
+      handleVideoReady(videoRef.current);
+      if (intervalRef.current) return;
+      intervalRef.current = setInterval(processFrame, 1000 / targetFps);
+    }
+  }, [videoRef.current]);
+  useEffect(() => {
+    (async () => {
+      const stream = await getCameraStream("user");
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    })();
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      const stream = videoRef.current?.srcObject;
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  // Frame processing using the video element from CameraBox
+  const processFrame = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    canvas.width = width;
+    canvas.height = height;
+    ctx.drawImage(video, 0, 0, width, height);
+
+    const { data } = ctx.getImageData(0, 0, width, height);
+    let totalIntensity = 0;
+    const pixelCount = width * height;
+    for (let i = 0; i < data.length; i += 4) {
+      const intensity =
+        0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      totalIntensity += intensity;
+    }
+
+    const avgIntensity = totalIntensity / pixelCount;
+
+    const now = Date.now();
+    if (!startTimeRef.current) startTimeRef.current = now;
+
+    setExportData((p) => [...p, avgIntensity]);
+
+    // Keep a separate time-series for intensity
+    setIntensitySeries((prev) => {
+      return [...prev, { x: now, y: Number(avgIntensity.toFixed(2)) }];
+    });
+
+    // Maintain raw values for HR detection
+    setSeriesData((p) => {
+      const next = [...p, avgIntensity]; // ✅ keep all data (no slice)
+
+      const result = calculateHRMetrics(next, targetFps);
+      if (result) {
+        setHeartRate(result.heartRate);
+        setHrv(result.hrv);
+
+        setHrSeries((prev) => [...prev, { x: now, y: result.heartRate }]);
+        setHrvSeries((prev) => [...prev, { x: now, y: result.hrv }]);
+      }
+
+      return next;
+    });
+  };
+
+  const handleVideoReady = (el) => {
+    videoRef.current = el;
+    if (intervalRef.current) return;
+    intervalRef.current = setInterval(processFrame, 1000 / targetFps);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+  const intensityOptions = useMemo(() => {
+    const lastWindow = intensitySeries.slice(-maxPoints); // ✅ only last 100
+
+    let yMin = 0,
+      yMax = 255;
+    if (lastWindow.length > 0) {
+      const values = lastWindow.map((p) => p.y);
+      const min = Math.min(...values),
+        max = Math.max(...values);
+      yMin = Math.max(min - 1, 0);
+      yMax = Math.min(max + 1, 255);
+    }
+    return {
+      chart: {
+        type: "line",
+        animations: { enabled: true },
+        toolbar: { show: false },
+        zoom: { enabled: false },
+      },
+      stroke: {
+        curve: "smooth",
+        width: 2,
+        colors: [theme === "dark" ? "#10b981" : "#14b8a6"],
+      },
+      grid: { borderColor: theme === "dark" ? "#333" : "#ddd" },
+      dataLabels: { enabled: false },
+      xaxis: {
+        type: "datetime",
+        labels: { style: { colors: theme === "dark" ? "#e5e5e5" : "#111" } },
+        title: { text: "Time" },
+        // Show only the last `maxPoints` on the X-axis.
+        // `1000 / targetFps` = time (ms) per frame,
+        // so `maxPoints * (1000 / targetFps)` = total visible time window in ms.
+        range: maxPoints * (1000 / targetFps),
+      },
+      yaxis: { min: yMin, max: yMax, title: { text: "Intensity" } },
+      theme: { mode: theme },
+      tooltip: { theme: theme },
+    };
+  }, [intensitySeries, theme]);
+
+  const hrvOptions = useMemo(() => {
+    let yMin = 0,
+      yMax = 150;
+    if (hrvSeries.length > 0) {
+      const values = hrvSeries.map((p) => p.y);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      yMin = Math.max(min - 5, 0);
+      yMax = max + 5;
+    }
+    return {
+      chart: {
+        type: "line",
+        animations: { enabled: true },
+        toolbar: { show: false },
+        zoom: { enabled: false },
+      },
+      stroke: {
+        curve: "smooth",
+        width: 2,
+        colors: [theme === "dark" ? "#a78bfa" : "#ec4899"],
+      },
+      grid: { borderColor: theme === "dark" ? "#333" : "#ddd" },
+      dataLabels: { enabled: false },
+      xaxis: {
+        type: "datetime",
+        labels: { style: { colors: theme === "dark" ? "#e5e5e5" : "#111" } },
+        title: { text: "Time" },
+      },
+      yaxis: { min: yMin, max: yMax, title: { text: "HRV (ms)" } },
+      theme: { mode: theme },
+      tooltip: { theme: theme },
+    };
+  }, [hrvSeries, theme]);
+
+  const hrOptions = useMemo(() => {
+    let yMin = 40,
+      yMax = 180;
+    if (hrSeries.length > 0) {
+      const values = hrSeries.map((p) => p.y);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      yMin = Math.max(min - 5, 40);
+      yMax = Math.min(max + 5, 200);
+    }
+    return {
+      chart: {
+        type: "line",
+        animations: { enabled: true },
+        toolbar: { show: false },
+        zoom: { enabled: false },
+      },
+      stroke: {
+        curve: "smooth",
+        width: 2,
+        colors: [theme === "dark" ? "#22d3ee" : "#3b82f6"],
+      },
+      grid: { borderColor: theme === "dark" ? "#333" : "#ddd" },
+      dataLabels: { enabled: false },
+      xaxis: {
+        type: "datetime",
+        labels: { style: { colors: theme === "dark" ? "#e5e5e5" : "#111" } },
+        title: { text: "Time" },
+      },
+      yaxis: { min: yMin, max: yMax, title: { text: "Heart Rate (BPM)" } },
+      theme: { mode: theme },
+      tooltip: { theme: theme },
+    };
+  }, [hrSeries, theme]);
+  return (
+    <div className="min-h-screen" style={{ background: "#ffffff" }}>
+      {/* Top Navigation */}
+      <div
+        className="flex items-center gap-4 px-4 py-3"
+        style={{ borderBottom: "1px solid #e5e7eb" }}
+      >
+        <button
+          onClick={onBack}
+          className="flex items-center justify-center rounded-full"
+          style={{
+            width: 36,
+            height: 36,
+            background: "#f3f4f6",
+            border: "none",
+            cursor: "pointer",
+            color: "#6b7280",
+            fontSize: 18,
+          }}
+        >
+          ‹
+        </button>
+        <h1
+          className="flex-1 text-center"
+          style={{
+            fontFamily: "Inter, sans-serif",
+            fontWeight: 600,
+            fontSize: 18,
+            color: "#111827",
+            margin: 0,
+          }}
+        >
+          Heart Rate Measuring
+        </h1>
+        <div style={{ width: 36 }} /> {/* Spacer for centering */}
+      </div>
+
+      <div
+        className="px-4 py-6"
+        style={{
+          paddingBottom: "100px",
+          maxHeight: "calc(100vh - 60px)",
+          overflowY: "auto",
+        }}
+      >
+        {/* Instructions Card */}
+        <div
+          className="rounded-xl p-4 mb-6"
+          style={{ background: "#f9fafb", border: "1px solid #e5e7eb" }}
+        >
+          <p
+            style={{
+              fontFamily: "Inter, sans-serif",
+              fontWeight: 400,
+              fontSize: 14,
+              lineHeight: "20px",
+              color: "#111827",
+              margin: 0,
+            }}
+          >
+            Hold your hand steady and apply light pressure with your finger.
+          </p>
+        </div>
+
+        {/* Scrollable Graphs */}
+        <div className="space-y-6 mb-6">
+          {/* Graph 1: heart rate */}
+          <div
+            className="rounded-xl p-4"
+            style={{
+              background: "#ffffff",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            }}
+          >
+            <h3
+              style={{
+                fontFamily: "Inter, sans-serif",
+                fontWeight: 600,
+                fontSize: 16,
+                color: "#111827",
+                margin: "0 0 16px 0",
+              }}
+            >
+              Heart Rate
+            </h3>
+            <div style={{ height: 250 }}>
+              {hrSeries.length === 0 ? (
+                <div
+                  style={{
+                    height: 280,
+                    borderRadius: 8,
+                    background: "light" ? "#1f2937" : "#f3f4f6",
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: `linear-gradient(90deg, transparent, ${
+                        "light" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"
+                      }, transparent)`,
+                      transform: "translateX(-100%)",
+                      animation: "shimmer 1.5s infinite",
+                    }}
+                  />
+                </div>
+              ) : (
+                <ReactApexChart
+                  options={hrOptions}
+                  series={[{ name: "Heart Rate", data: hrSeries }]}
+                  type="line"
+                  height={300}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Graph 2: Heart Rate Variability */}
+          <div
+            className="rounded-xl p-4"
+            style={{
+              background: "#ffffff",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            }}
+          >
+            <h3
+              style={{
+                fontFamily: "Inter, sans-serif",
+                fontWeight: 600,
+                fontSize: 16,
+                color: "#111827",
+                margin: "0 0 16px 0",
+              }}
+            >
+              Heart Rate Variability
+            </h3>
+            <div style={{ height: 250 }}>
+              <ReactApexChart
+                options={hrvOptions}
+                series={[{ name: "HRV", data: hrvSeries }]}
+                type="line"
+                height={300}
+              />
+            </div>
+          </div>
+
+          {/* Graph 3: Intensity */}
+          <div
+            className="rounded-xl p-4"
+            style={{
+              background: "#ffffff",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            }}
+          >
+            <h3
+              style={{
+                fontFamily: "Inter, sans-serif",
+                fontWeight: 600,
+                fontSize: 16,
+                color: "#111827",
+                margin: "0 0 16px 0",
+              }}
+            >
+              Intensity Signal
+            </h3>
+            <div style={{ height: 250 }}>
+              {intensitySeries.length === 0 ? (
+                <div
+                  style={{
+                    height: 280,
+                    borderRadius: 8,
+                    background: "light" ? "#1f2937" : "#f3f4f6",
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: `linear-gradient(90deg, transparent, ${
+                        "light" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"
+                      }, transparent)`,
+                      transform: "translateX(-100%)",
+                      animation: "shimmer 1.5s infinite",
+                    }}
+                  />
+                </div>
+              ) : (
+                <ReactApexChart
+                  options={intensityOptions}
+                  series={[{ name: "Intensity", data: intensitySeries }]}
+                  type="line"
+                  height={300}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stop Button - Fixed at bottom */}
+      <div
+        className="fixed bottom-0 left-0 right-0 p-4"
+        style={{
+          background: "#ffffff",
+          borderTop: "1px solid #e5e7eb",
+          boxShadow: "0 -2px 8px rgba(0,0,0,0.05)",
+        }}
+      >
+        <PrimaryButton
+          onClick={onStop}
+          style={{
+            width: "100%",
+          }}
+        >
+          Stop Measuring
+        </PrimaryButton>
+      </div>
+
+      {/* Floating Camera */}
+      {/* <CameraBox onVideoReady={handleVideoReady} /> */}
+      {/* Sticky Camera Preview */}
+      <div
+        className={`sticky-camera ${isCamCollapsed ? "collapsed" : ""}`}
+        style={{
+          width: isCamCollapsed ? 96 : 160,
+          height: isCamCollapsed ? 96 : 160,
+          position: "fixed",
+          top: 16,
+          right: 16,
+          borderRadius: "12px",
+          overflow: "hidden",
+          border: `3px solid ${"light" ? "#22d3ee" : "#3b82f6"}`,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          zIndex: 40,
+          background: "light" ? "#0b1220" : "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          width="100%"
+          height="100%"
+          style={{ objectFit: "cover" }}
+        />
+        <button
+          onClick={() => setIsCamCollapsed((v) => !v)}
+          style={{
+            position: "absolute",
+            top: 6,
+            left: 6,
+            background: "rgba(0,0,0,0.5)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            padding: "2px 6px",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+          aria-label={isCamCollapsed ? "Expand camera" : "Collapse camera"}
+        >
+          {isCamCollapsed ? "↗" : "↘"}
+        </button>
+      </div>
+
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+    </div>
+  );
+};
+
+export default HeartRateMeasuring;
