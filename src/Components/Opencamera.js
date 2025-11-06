@@ -90,33 +90,29 @@ const Opencamera = () => {
 
     // Keep a separate time-series for intensity
     setIntensitySeries((prev) => {
-      const next = prev.length >= maxPoints ? prev.slice(prev.length - (maxPoints - 1)) : prev.slice();
-      next.push({ x: now, y: Number(avgIntensity.toFixed(2)) });
-      return next;
+      return [
+        ...prev,
+        { x: now, y: Number(avgIntensity.toFixed(2)) }
+      ];
     });
+    
 
     // Maintain raw values for HR detection
     setSeriesData((p) => {
-      const next = p.length >= maxPoints ? p.slice(p.length - (maxPoints - 1)) : p.slice();
-      next.push(avgIntensity);
+      const next = [...p, avgIntensity];   // ✅ keep all data (no slice)
+    
       const result = calculateHRMetrics(next, targetFps);
       if (result) {
         setHeartRate(result.heartRate);
         setHrv(result.hrv);
-
-        setHrSeries((prev) => {
-          const seriesNext = prev.length >= maxPoints ? prev.slice(prev.length - (maxPoints - 1)) : prev.slice();
-          seriesNext.push({ x: now, y: result.heartRate });
-          return seriesNext;
-        });
-        setHrvSeries((prev) => {
-          const seriesNext = prev.length >= maxPoints ? prev.slice(prev.length - (maxPoints - 1)) : prev.slice();
-          seriesNext.push({ x: now, y: result.hrv });
-          return seriesNext;
-        });
+    
+        setHrSeries((prev) => [...prev, { x: now, y: result.heartRate }]);
+        setHrvSeries((prev) => [...prev, { x: now, y: result.hrv }]);
       }
+    
       return next;
     });
+    
   };
 
   const handleCalculate = () => {
@@ -150,9 +146,11 @@ const Opencamera = () => {
   };
 
   const intensityOptions = useMemo(() => {
+    const lastWindow = intensitySeries.slice(-maxPoints);   // ✅ only last 100
+
     let yMin = 0, yMax = 255;
-    if (intensitySeries.length > 0) {
-      const values = intensitySeries.map((p) => p.y);
+    if (lastWindow.length > 0) {
+      const values = lastWindow.map((p) => p.y);
       const min = Math.min(...values), max = Math.max(...values);
       yMin = Math.max(min - 1, 0);
       yMax = Math.min(max + 1, 255);
@@ -166,6 +164,10 @@ const Opencamera = () => {
         type: "datetime",
         labels: { style: { colors: theme === "dark" ? "#e5e5e5" : "#111" } },
         title: { text: "Time" },
+// Show only the last `maxPoints` on the X-axis.
+// `1000 / targetFps` = time (ms) per frame,
+// so `maxPoints * (1000 / targetFps)` = total visible time window in ms.
+range: maxPoints * (1000 / targetFps),
       },
       yaxis: { min: yMin, max: yMax, title: { text: "Intensity" } },
       theme: { mode: theme },
