@@ -15,7 +15,6 @@ const HeartRateMeasuring = () => {
   const startTimeRef = useRef(null);
   const theme = "light";
   const [intensitySeries, setIntensitySeries] = useState([]); // {x,y}
-  const [exportData, setExportData] = useState([]); // for export as json or csv
   const [heartRate, setHeartRate] = useState("--"); 
   const [hrv, setHrv] = useState("--"); 
   const [isCamCollapsed, setIsCamCollapsed] = useState(true);
@@ -42,13 +41,64 @@ const HeartRateMeasuring = () => {
     if (videoRef.current) videoRef.current.srcObject = stream;
     setIsFrontCamera(!isFrontCamera);
   };
+
+    // Frame processing using the video element from CameraBox
+    const processFrame = () => {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (!video || !canvas) return;
+  
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 480;
+  
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(video, 0, 0, width, height);
+  
+      const { data } = ctx.getImageData(0, 0, width, height);
+      let totalIntensity = 0;
+      const pixelCount = width * height;
+      for (let i = 0; i < data.length; i += 4) {
+        const intensity =
+          0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        totalIntensity += intensity;
+      }
+  
+      const avgIntensity = totalIntensity / pixelCount;
+  
+      const now = Date.now();
+      if (!startTimeRef.current) startTimeRef.current = now;
+  
+  
+      // Keep a separate time-series for intensity
+      // Maintain raw values for HR detection
+      setIntensitySeries((prev) => {
+        const next = [...prev, avgIntensity]; // ✅ keep all data (no slice)
+        const result = calculateHRMetrics(next, targetFps);
+        if (result) {
+          setHeartRate(result.heartRate);
+          setHrv(result.hrv);
+  
+        }
+        return [...prev, { x: now, y: Number(avgIntensity.toFixed(2)) }];
+      });
+  
+    };
+  
+    const handleVideoReady = (el) => {
+      videoRef.current = el;
+      if (intervalRef.current) return;
+      intervalRef.current = setInterval(processFrame, 1000 / targetFps);
+    };
+   
   useEffect(() => {
     if (videoRef.current) {
       handleVideoReady(videoRef.current);
       if (intervalRef.current) return;
       intervalRef.current = setInterval(processFrame, 1000 / targetFps);
     }
-  }, [videoRef.current]);
+  }, [videoRef.current, targetFps, processFrame,handleVideoReady]); //eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     (async () => {
       const stream = await getCameraStream("user");
@@ -61,59 +111,7 @@ const HeartRateMeasuring = () => {
     };
   }, []);
 
-  // Frame processing using the video element from CameraBox
-  const processFrame = () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
 
-    const width = video.videoWidth || 640;
-    const height = video.videoHeight || 480;
-
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    canvas.width = width;
-    canvas.height = height;
-    ctx.drawImage(video, 0, 0, width, height);
-
-    const { data } = ctx.getImageData(0, 0, width, height);
-    let totalIntensity = 0;
-    const pixelCount = width * height;
-    for (let i = 0; i < data.length; i += 4) {
-      const intensity =
-        0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-      totalIntensity += intensity;
-    }
-
-    const avgIntensity = totalIntensity / pixelCount;
-
-    const now = Date.now();
-    if (!startTimeRef.current) startTimeRef.current = now;
-
-
-    // Keep a separate time-series for intensity
-    // Maintain raw values for HR detection
-    setIntensitySeries((prev) => {
-      return [...prev, { x: now, y: Number(avgIntensity.toFixed(2)) }];
-    });
-    setExportData((p) => {
-      const next = [...p, avgIntensity]; // ✅ keep all data (no slice)
-
-      const result = calculateHRMetrics(next, targetFps);
-      if (result) {
-        setHeartRate(result.heartRate);
-        setHrv(result.hrv);
-
-      }
-
-      return next;
-    });
-  };
-
-  const handleVideoReady = (el) => {
-    videoRef.current = el;
-    if (intervalRef.current) return;
-    intervalRef.current = setInterval(processFrame, 1000 / targetFps);
-  };
 
   useEffect(() => {
     return () => {
@@ -159,7 +157,7 @@ const HeartRateMeasuring = () => {
       theme: { mode: theme },
       tooltip: { theme: theme },
     };
-  }, [intensitySeries, theme]);
+  }, [intensitySeries, theme, maxPoints, targetFps  ]);
 
 
 
@@ -175,7 +173,6 @@ const HeartRateMeasuring = () => {
     intervalRef.current = null;
     startTimeRef.current = null;
     setIntensitySeries([]);
-    setExportData([]);
     setHeartRate("--");
     setHrv("--");
   };
