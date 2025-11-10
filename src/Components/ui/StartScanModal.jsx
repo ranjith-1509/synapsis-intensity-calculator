@@ -1,9 +1,18 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Modal } from "antd";
 import PrimaryButton from "./PrimaryButton";
 import GuideImage from "../../images/GuidIllustation.png";
 
 const StartScanModal = ({ open, onClose, onStartScan }) => {
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+
+  const handleStart = () => {
+    if (dontShowAgain) {
+      localStorage.setItem("hideStartScanModal", "true");
+    }
+    onStartScan();
+  };
+
   return (
     <Modal
       open={open}
@@ -85,9 +94,30 @@ const StartScanModal = ({ open, onClose, onStartScan }) => {
           Hold your hand steady and apply light pressure with your finger.
         </p>
 
+        {/* ✅ Checkbox */}
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 16,
+            justifyContent: "center",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={dontShowAgain}
+            onChange={(e) => setDontShowAgain(e.target.checked)}
+          />
+          <span style={{ fontSize: 14, color: "#374151" }}>
+            Don’t show again
+          </span>
+        </label>
+
         {/* Start Scan Button */}
         <div style={{ display: "flex", justifyContent: "center" }}>
-          <PrimaryButton onClick={onStartScan} style={{ minWidth: 200 }}>
+          <PrimaryButton onClick={handleStart} style={{ minWidth: 200 }}>
             Start Scan
           </PrimaryButton>
         </div>

@@ -1,8 +1,9 @@
 
 import React, { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import ReactApexChart from "react-apexcharts";
 
-const RecentItem = ({ time = "10:30am", bpm = 72, title = "Heart Rate" }) => {
+const RecentItem = ({ time = "10:30am", bpm = 72, title = "Heart Rate", onClick }) => {
   const data = useMemo(
     () => Array.from({ length: 24 }).map((_, i) => 60 + Math.sin(i / 2) * 6 + Math.random() * 3),
     []
@@ -20,7 +21,15 @@ const RecentItem = ({ time = "10:30am", bpm = 72, title = "Heart Rate" }) => {
   );
 
   return (
-    <div className="rounded-2xl p-4 mb-3" style={{ background: "#fff", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
+    <div
+      className="rounded-2xl p-4 mb-3"
+      style={{ background: "#fff", boxShadow: "0 4px 12px rgba(0,0,0,0.08)", cursor: "pointer" }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open session detail for ${time}, ${bpm} bpm`}
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick && onClick(); } }}
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span role="img" aria-label="heart">❤️</span>
@@ -49,6 +58,21 @@ const RecentItem = ({ time = "10:30am", bpm = 72, title = "Heart Rate" }) => {
 };
 
 const RecentSection = () => {
+  const navigate = useNavigate();
+  const openDetail = (time, bpm) => {
+    const prettyTime = String(time).replace("am", "AM").replace("pm", "PM");
+    const date = new Date();
+    const dateLabel = date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    navigate("/session-detail", {
+      state: {
+        time: prettyTime,
+        bpm,
+        hrv: 34,
+        date: dateLabel,
+        rangeLabel: "Normal",
+      },
+    });
+  };
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -57,8 +81,8 @@ const RecentSection = () => {
       </div>
 
       <div>
-        <RecentItem time="10:30am" bpm={72} />
-        <RecentItem time="06:30pm" bpm={70} />
+        <RecentItem time="10:30am" bpm={72} onClick={() => openDetail("10:30 AM", 72)} />
+        <RecentItem time="06:30pm" bpm={70} onClick={() => openDetail("06:30 PM", 70)} />
       </div>
     </div>
   );

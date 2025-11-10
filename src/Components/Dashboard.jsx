@@ -1,16 +1,22 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import MetricCard from "./dashboard/MetricCard";
 import RecentSection from "./dashboard/RecentSection";
 import ReactApexChart from "react-apexcharts";
 import PrimaryButton from "./ui/PrimaryButton";
 import StartScanModal from "./ui/StartScanModal";
 
-const Dashboard = ({ onStartMeasuring }) => {
+const Dashboard = () => {
+  const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   // Small preview chart data for hero card
   const previewData = Array.from({ length: 20 }).map(
     (_, i) => 65 + Math.sin(i / 3) * 10 + Math.random() * 5
   );
+  const hideStartScanModal = localStorage.getItem("hideStartScanModal");
+  const heartRate = localStorage.getItem("heartRate") || "--";
+  const hrv = localStorage.getItem("hrv") || "--";
+
 
   const previewOptions = {
     chart: {
@@ -21,6 +27,15 @@ const Dashboard = ({ onStartMeasuring }) => {
     stroke: { curve: "smooth", width: 2, colors: ["#93c5fd"] },
     fill: { type: "gradient", gradient: { opacityFrom: 0.4, opacityTo: 0.1 } },
     tooltip: { enabled: false },
+  };
+
+
+  const onStartMeasuring = () => {
+    if (hideStartScanModal) {
+      navigate("/heart-rate");
+    } else {
+      setIsModalOpen(true);
+    }
   };
 
   return (
@@ -103,7 +118,7 @@ const Dashboard = ({ onStartMeasuring }) => {
             />
           </div>
 
-          <PrimaryButton onClick={() => setIsModalOpen(true)}>
+          <PrimaryButton onClick={onStartMeasuring}>
             Start Measuring
           </PrimaryButton>
         </div>
@@ -113,8 +128,8 @@ const Dashboard = ({ onStartMeasuring }) => {
       <div className="px-4 pb-8 mt-10">
         {/* Metric Cards */}
         <div className="grid grid-cols-2 gap-3 -mt-6 mb-4 relative z-10">
-          <MetricCard icon="❤️" title="HR" value="72" unit="bpm" />
-          <MetricCard icon="💠" title="HRV" value="52" unit="ms" />
+          <MetricCard icon="❤️" title="HR" value={heartRate} unit="bpm" />
+          <MetricCard icon="💠" title="HRV" value={hrv} unit="ms" />
         </div>
 
         {/* Recent Scan */}
@@ -132,9 +147,7 @@ const Dashboard = ({ onStartMeasuring }) => {
         onClose={() => setIsModalOpen(false)}
         onStartScan={() => {
           setIsModalOpen(false);
-          if (onStartMeasuring) {
-            onStartMeasuring();
-          }
+          navigate("/heart-rate");
         }}
       />
     </div>
