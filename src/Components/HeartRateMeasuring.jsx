@@ -16,6 +16,8 @@ const HeartRateMeasuring = () => {
   const theme = "light";
   const [intensitySeries, setIntensitySeries] = useState([]); // {x,y}
   const [heartRate, setHeartRate] = useState("--"); 
+  const [, setExportData] = useState([]); // use export data for export as json or csv
+  
   const [hrv, setHrv] = useState("--"); 
   const [isCamCollapsed, setIsCamCollapsed] = useState(true);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
@@ -74,16 +76,20 @@ const HeartRateMeasuring = () => {
       // Keep a separate time-series for intensity
       // Maintain raw values for HR detection
       setIntensitySeries((prev) => {
-        const next = [...prev, avgIntensity]; // ✅ keep all data (no slice)
+        return [...prev, { x: now, y: Number(avgIntensity.toFixed(2)) }];
+      });
+      setExportData((p) => {
+        const next = [...p, avgIntensity]; // ✅ keep all data (no slice)
+  
         const result = calculateHRMetrics(next, targetFps);
         if (result) {
           setHeartRate(result.heartRate);
           setHrv(result.hrv);
   
         }
-        return [...prev, { x: now, y: Number(avgIntensity.toFixed(2)) }];
-      });
   
+        return next;
+      });
     };
   
     const handleVideoReady = (el) => {
