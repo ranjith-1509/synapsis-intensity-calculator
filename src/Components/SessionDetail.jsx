@@ -68,7 +68,6 @@ const SessionDetail = () => {
   };
 
   const [period, setPeriod] = useState("Day");
-  const [view, setView] = useState("Summary");
 
   // Dummy time series (compact and realistic)
   const chartSeries = useMemo(
@@ -95,40 +94,43 @@ const SessionDetail = () => {
 
 
 
-  const baseChartOptions = {
-    chart: {
-      type: "line",
-      toolbar: { show: false },
-      animations: { enabled: true },
-      sparkline: { enabled: false },
-    },
-    grid: {
-      strokeDashArray: 4,
-      borderColor: BORDER,
-    },
-    stroke: {
-      curve: "smooth",
-      width: 2,
-      colors: [PRIMARY],
-    },
-    dataLabels: { enabled: false },
-    xaxis: {
-      type: "numeric",
-      tickAmount: 5,
-      labels: {
-        style: { colors: TEXT, fontSize: "11px" },
-        formatter: (val) => `${val}m`,
+  const baseChartOptions = useMemo(
+    () => ({
+      chart: {
+        type: "line",
+        toolbar: { show: false },
+        animations: { enabled: true },
+        sparkline: { enabled: false },
       },
-      axisBorder: { color: BORDER },
-      axisTicks: { color: BORDER },
-    },
-    yaxis: {
-      labels: { style: { colors: TEXT, fontSize: "11px" } },
-    },
-    tooltip: {
-      theme: "light",
-    },
-  };
+      grid: {
+        strokeDashArray: 4,
+        borderColor: BORDER,
+      },
+      stroke: {
+        curve: "smooth",
+        width: 2,
+        colors: [PRIMARY],
+      },
+      dataLabels: { enabled: false },
+      xaxis: {
+        type: "numeric",
+        tickAmount: 5,
+        labels: {
+          style: { colors: TEXT, fontSize: "11px" },
+          formatter: (val) => `${val}m`,
+        },
+        axisBorder: { color: BORDER },
+        axisTicks: { color: BORDER },
+      },
+      yaxis: {
+        labels: { style: { colors: TEXT, fontSize: "11px" } },
+      },
+      tooltip: {
+        theme: "light",
+      },
+    }),
+    []
+  );
 
   const hrChartOptions = useMemo(
     () => ({
@@ -140,21 +142,10 @@ const SessionDetail = () => {
         max: 90,
       },
     }),
-    []
+    [baseChartOptions]
   );
 
-  const hrvChartOptions = useMemo(
-    () => ({
-      ...baseChartOptions,
-      yaxis: {
-        ...baseChartOptions.yaxis,
-        title: { text: "HRV (ms)" },
-        min: 20,
-        max: 45,
-      },
-    }),
-    []
-  );
+
 
   return (
     <div className="sd-root" role="main" aria-label="Session details page">

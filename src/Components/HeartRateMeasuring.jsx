@@ -179,9 +179,6 @@ const HeartRateMeasuring = () => {
     setHeartRate("--");
     setHrv("--");
   };
-  const handleBack = () => {
-    navigate("/dashboard");
-  };
   return (
     <div className="min-h-screen" style={{ background: "#ffffff" }}>
       {/* Top Navigation */}

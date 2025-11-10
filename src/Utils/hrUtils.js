@@ -50,10 +50,7 @@ const bandPassFilter = (data, sampleRate, lowCut = 0.75, highCut = 3.0) => {
   // For more accuracy, would need proper IIR/FIR filter implementation
   // Using high-pass + low-pass combination
   
-  // Normalize cutoff frequencies
-  const nyquist = sampleRate / 2;
-  const lowNorm = lowCut / nyquist;
-  const highNorm = highCut / nyquist;
+
   
   // Simple boxcar (moving average) filter for low frequencies
   // This is an approximation - proper implementation would use IIR/FIR filters
