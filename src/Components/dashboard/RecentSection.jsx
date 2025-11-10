@@ -82,7 +82,7 @@ const RecentSection = () => {
 
       <div>
         <RecentItem time="10:30am" bpm={72} onClick={() => openDetail("10:30 AM", 72)} />
-        <RecentItem time="06:30pm" bpm={70} onClick={() => openDetail("06:30 PM", 70)} />
+        <RecentItem time="06:30pm" title="HRV" bpm={70} onClick={() => openDetail("06:30 PM", 70)} />
       </div>
     </div>
   );
