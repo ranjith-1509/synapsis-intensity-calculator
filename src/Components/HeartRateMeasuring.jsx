@@ -117,7 +117,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
 
       return limited;
     });
-  }, [maxPoints, targetFps]);
+  }, [ targetFps]);
 
   const saveSessionData = useCallback(async () => {
     if (!userId) return false;

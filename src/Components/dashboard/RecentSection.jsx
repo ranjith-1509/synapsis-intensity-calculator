@@ -179,17 +179,7 @@ const RecentSection = () => {
       const createdDate =
         toDate(session.createdAt) ?? toDate(session.clientCreatedAt) ?? new Date();
 
-      const firstTimestamp = session.firstTimestamp ?? metrics[0]?.timestamp ?? null;
-      const lastTimestamp =
-        session.lastTimestamp ??
-        metrics[metrics.length - 1]?.timestamp ??
-        firstTimestamp ??
-        null;
-      const durationMs =
-        session.durationMs ??
-        (firstTimestamp && lastTimestamp && lastTimestamp >= firstTimestamp
-          ? lastTimestamp - firstTimestamp
-          : null);
+
 
       return {
         id: session.id,
