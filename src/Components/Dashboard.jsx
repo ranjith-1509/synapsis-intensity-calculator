@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { LogoutOutlined } from "@ant-design/icons";
 import MetricCard from "./dashboard/MetricCard";
 import RecentSection from "./dashboard/RecentSection";
 import ReactApexChart from "react-apexcharts";
@@ -9,6 +10,8 @@ import StartScanModal from "./ui/StartScanModal";
 const Dashboard = () => {
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const settingsRef = useRef(null);
   // Small preview chart data for hero card
   const previewData = Array.from({ length: 20 }).map(
     (_, i) => 65 + Math.sin(i / 3) * 10 + Math.random() * 5
@@ -17,6 +20,25 @@ const Dashboard = () => {
   const heartRate = localStorage.getItem("heartRate") || "--";
   const hrv = localStorage.getItem("hrv") || "--";
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (settingsRef.current && !settingsRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+    if (isMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isMenuOpen]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("firebaseToken");
+    localStorage.removeItem("authEmail");
+    navigate("/login", { replace: true });
+  };
 
   const previewOptions = {
     chart: {
@@ -54,7 +76,7 @@ const Dashboard = () => {
       >
         {/* Header */}
 
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex items-start justify-between mb-4" ref={settingsRef}>
           <div>
             <p
               className="text-lg"
@@ -69,19 +91,62 @@ const Dashboard = () => {
               Welcome Back
             </h2>
           </div>
-          <button
-            className="rounded-full flex items-center justify-center"
-            style={{
-              width: 36,
-              height: 36,
-              background: "rgba(255,255,255,0.2)",
-              border: "none",
-              color: "#fff",
-              fontSize: 18,
-            }}
-          >
-            ⚙️
-          </button>
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              className="rounded-full flex items-center justify-center"
+              style={{
+                width: 36,
+                height: 36,
+                background: "rgba(255,255,255,0.2)",
+                border: "none",
+                color: "#fff",
+                fontSize: 18,
+                cursor: "pointer",
+              }}
+              aria-haspopup="menu"
+              aria-expanded={isMenuOpen}
+            >
+              ⚙️
+            </button>
+            {isMenuOpen && (
+              <div
+                role="menu"
+                style={{
+                  position: "absolute",
+                  top: 44,
+                  right: 0,
+                  background: "#ffffff",
+                  borderRadius: 16,
+                  boxShadow: "0 12px 32px rgba(15,23,42,0.18)",
+                  padding: "8px",
+                  width: 110,
+                  zIndex: 20,
+                }}
+              >
+                <button
+                  role="menuitem"
+                  onClick={handleLogout}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    background: "transparent",
+                    border: "none",
+                    fontSize: 14,
+                    color: "#334155",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span role="img" aria-hidden="true">
+                  <LogoutOutlined />
+                  </span>
+                  <span>Logout</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Heart Rate Measuring Card */}
