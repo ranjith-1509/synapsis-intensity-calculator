@@ -5,6 +5,7 @@ import ReactApexChart from "react-apexcharts";
 import { onAuthStateChanged } from "firebase/auth";
 import { getDocs, limit, orderBy, query } from "firebase/firestore";
 import { auth, userSessionsCollection } from "../../firebaseConfig";
+import HeartPulse from "../../images/heartpulse.svg";
 
 
 
@@ -62,7 +63,7 @@ const RecentItem = ({ session, onOpen }) => {
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span role="img" aria-label="heart">
-            ❤️
+            <img src={HeartPulse} alt="Heart Pulse" className="w-6 h-6" />
           </span>
           <span className="font-medium" style={{ fontSize: 14, color: "#111" }}>
             {session.dateLabel}
@@ -87,7 +88,7 @@ const RecentItem = ({ session, onOpen }) => {
             </span>
           </div>
           <div className="text-xs" style={{ color: "#9ca3af" }}>
-            HRV {session.avgHrvDisplay} ms • {session.sampleCount} samples
+            HRV {session.avgHrvDisplay} ms 
           </div>
         </div>
         <div style={{ width: 110 }}>
@@ -103,7 +104,7 @@ const RecentItem = ({ session, onOpen }) => {
   );
 };
 
-const RecentSection = () => {
+const RecentSection = ({ handleNoOfRecords }) => {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -127,8 +128,7 @@ const RecentSection = () => {
         const snapshot = await getDocs(
           query(sessionsRef, orderBy("createdAt", "desc"), limit(10))
         );
-        console.log(snapshot.docs,"snapshot")
-        console.log(sessionsRef,"sessionsRef")
+     handleNoOfRecords(snapshot?.docs?.length);
         if (!cancelled) {
           const list = snapshot.docs.map((docSnap) => ({
             id: docSnap.id,
@@ -152,7 +152,7 @@ const RecentSection = () => {
       cancelled = true;
       unsubscribe();
     };
-  }, []);
+  }, [handleNoOfRecords]);
 
   const summaries = useMemo(() => {
     return sessions.map((session) => {

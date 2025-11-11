@@ -17,6 +17,8 @@ import {
 } from "../firebaseConfig";
 import { calculateHRMetrics } from "../Utils/hrUtils";
 import MetricCard from "./dashboard/MetricCard";
+import hrvIcon from "../images/hrv.svg";
+import hr from "../images/hr.svg";
 
 const DEFAULT_TARGET_FPS = 30;
 const DEFAULT_MAX_POINTS = 100;
@@ -395,12 +397,12 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
           {/* Metric Cards */}
           <div className="grid grid-cols-2 gap-3 -mt-6 mb-4 relative z-10 mt-3">
             <MetricCard
-              icon="❤️"
+              icon={<img src={hr} alt="Heart Pulse" className="w-6 h-6"  style={{width: "54px", height: "51px"}}/>}
               title="HR"
               value={heartRate || "--"}
               unit="bpm"
             />
-            <MetricCard icon="💠" title="HRV" value={hrv || "--"} unit="ms" />
+            <MetricCard icon={<img src={hrvIcon} alt="Heart Pulse" className="w-6 h-6"  style={{width: "54px", height: "51px"}}/>} title="HRV" value={hrv || "--"} unit="ms" />
           </div>
 
           {/* Graph 3: Intensity */}

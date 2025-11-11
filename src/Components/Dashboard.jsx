@@ -3,19 +3,22 @@ import { useNavigate } from "react-router-dom";
 import { LogoutOutlined } from "@ant-design/icons";
 import MetricCard from "./dashboard/MetricCard";
 import RecentSection from "./dashboard/RecentSection";
-import ReactApexChart from "react-apexcharts";
 import PrimaryButton from "./ui/PrimaryButton";
 import StartScanModal from "./ui/StartScanModal";
+import { SettingsIcon } from "../images/SettingsIcon";
+import WavingHand from "../images/WavingHand.svg";
+import HeartPulseIcon from "../images/heartpulse.svg";
+import hr from "../images/hr.svg";
+import hrvIcon from "../images/hrv.svg";
+import sampleWaves from "../images/sampleWaves.svg";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [noOfRecords, setNoOfRecords] = useState("");
   const settingsRef = useRef(null);
-  // Small preview chart data for hero card
-  const previewData = Array.from({ length: 20 }).map(
-    (_, i) => 65 + Math.sin(i / 3) * 10 + Math.random() * 5
-  );
+
   const hideStartScanModal = localStorage.getItem("hideStartScanModal");
   const heartRate = localStorage.getItem("heartRate") || "--";
   const hrv = localStorage.getItem("hrv") || "--";
@@ -41,16 +44,8 @@ const Dashboard = () => {
     localStorage.removeItem("name");
     navigate("/login", { replace: true });
   };
-
-  const previewOptions = {
-    chart: {
-      type: "area",
-      sparkline: { enabled: true },
-      toolbar: { show: false },
-    },
-    stroke: { curve: "smooth", width: 2, colors: ["#93c5fd"] },
-    fill: { type: "gradient", gradient: { opacityFrom: 0.4, opacityTo: 0.1 } },
-    tooltip: { enabled: false },
+  const handleNoOfRecords = (noOfRecords) => {
+    setNoOfRecords(noOfRecords);
   };
 
 
@@ -78,13 +73,18 @@ const Dashboard = () => {
       >
         {/* Header */}
 
-        <div className="flex items-start justify-between mb-4" ref={settingsRef}>
+        <div
+          className="flex items-start justify-between mb-4"
+          ref={settingsRef}
+        >
           <div>
             <p
               className="text-lg"
               style={{ color: "rgba(255,255,255,0.9)", margin: 0 }}
             >
-              Hey {Name} 👋
+              <div className="flex items-center gap-2">
+                Hey {Name} <img src={WavingHand} alt="Waving Hand" />
+              </div>
             </p>
             <h2
               className="text-sm font-semibold"
@@ -109,7 +109,7 @@ const Dashboard = () => {
               aria-haspopup="menu"
               aria-expanded={isMenuOpen}
             >
-              ⚙️
+              <SettingsIcon />
             </button>
             {isMenuOpen && (
               <div
@@ -142,7 +142,7 @@ const Dashboard = () => {
                   }}
                 >
                   <span role="img" aria-hidden="true">
-                  <LogoutOutlined />
+                    <LogoutOutlined />
                   </span>
                   <span>Logout</span>
                 </button>
@@ -153,14 +153,15 @@ const Dashboard = () => {
 
         {/* Heart Rate Measuring Card */}
         <div
-          className="rounded-2xl p-4"
+          className="rounded-3xl p-4"
           style={{
             background: "#fff",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
           }}
         >
           <div className="flex items-center gap-2 mb-1">
-            <span style={{ fontSize: 18 }}>❤️</span>
+            <span style={{ fontSize: 18 }}>
+              <img src={HeartPulseIcon} alt="Heart Pulse" className="w-6 h-6" />
+            </span>
             <span
               className="font-semibold"
               style={{ color: "#111", fontSize: 15, width: "100%" }}
@@ -168,22 +169,20 @@ const Dashboard = () => {
               Heart Rate Measuring
             </span>
           </div>
-          <p
-            className="text-xs mb-3"
-            style={{ color: "#9ca3af", margin: "4px 0 12px 0" }}
-          >
-            56 records
+          <p className="text-xs mb-3" style={{ color: "#9ca3af" }}>
+            {noOfRecords > 0
+              ? `${noOfRecords} records`
+              : noOfRecords === 0
+              ? "No records"
+              : "Loading..."}
           </p>
 
           {/* Preview Chart */}
-          <div style={{ height: 60, marginBottom: 12 }}>
-            <ReactApexChart
-              options={previewOptions}
-              series={[{ data: previewData }]}
-              type="area"
-              height={60}
+            <img
+              src={sampleWaves}
+              alt="Sample Waves"
+              style={{ width: "307px" ,float: "right"}}
             />
-          </div>
 
           <PrimaryButton onClick={onStartMeasuring}>
             Start Measuring
@@ -195,13 +194,37 @@ const Dashboard = () => {
       <div className="px-4 pb-8 mt-10">
         {/* Metric Cards */}
         <div className="grid grid-cols-2 gap-3 -mt-6 mb-4 relative z-10">
-          <MetricCard icon="❤️" title="HR" value={heartRate} unit="bpm" />
-          <MetricCard icon="💠" title="HRV" value={hrv} unit="ms" />
+          <MetricCard
+            icon={
+              <img
+                src={hr}
+                alt="Heart Pulse"
+                className="w-6 h-6"
+                style={{ width: "54px", height: "51px" }}
+              />
+            }
+            title="HR"
+            value={heartRate}
+            unit="bpm"
+          />
+          <MetricCard
+            icon={
+              <img
+                src={hrvIcon}
+                alt="Heart Pulse"
+                className="w-6 h-6"
+                style={{ width: "54px", height: "51px" }}
+              />
+            }
+            title="HRV"
+            value={hrv}
+            unit="ms"
+          />
         </div>
 
         {/* Recent Scan */}
         <div className="mb-5">
-          <RecentSection />
+          <RecentSection handleNoOfRecords={handleNoOfRecords} />
         </div>
       </div>
 
