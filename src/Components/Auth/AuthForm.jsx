@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import PrimaryButton from "../ui/PrimaryButton";
+import { SpykLogo } from "../../images/spykLogo.js";
 
 const containerStyle = {
   minHeight: "100vh",
@@ -11,7 +12,7 @@ const containerStyle = {
   padding: "32px 16px",
 };
 
-const cardStyle = {
+const cardStyle = { 
   width: "100%",
   maxWidth: 420,
   background: "#ffffff",
@@ -25,16 +26,9 @@ const cardStyle = {
 
 const logoStyle = {
   display: "inline-flex",
-  height: 48,
   minWidth: 48,
-  borderRadius: 12,
   alignItems: "center",
   justifyContent: "center",
-  background: "#e0f2fe",
-  color: "#0f172a",
-  fontWeight: 700,
-  fontSize: 18,
-  letterSpacing: "0.04em",
 };
 
 const AuthForm = ({
@@ -72,7 +66,7 @@ const AuthForm = ({
     <div style={containerStyle}>
       <div style={cardStyle}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <span style={logoStyle}>AppLogo</span>
+          <span style={logoStyle}><SpykLogo /></span>
           <div>
             <h1
               style={{

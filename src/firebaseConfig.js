@@ -1,5 +1,11 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
+import {
+  getFirestore,
+  serverTimestamp,
+  collection,
+  doc,
+} from "firebase/firestore";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBL0u5Vybv4NLc7u1QHhKdYtNMnZeQRnAg",
@@ -12,8 +18,18 @@ const firebaseConfig = {
   };
 
 const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 export const auth = getAuth(app);
+export { db, serverTimestamp };
+
+export const userSessionsCollection = (userId) =>
+  collection(db, "users", userId, "sessions");
+
+export const sessionDoc = (userId, sessionId) =>
+  doc(db, "users", userId, "sessions", sessionId);
+
+export const sessionMetricsCollection = (userId, sessionId) =>
+  collection(db, "users", userId, "sessions", sessionId, "metrics");
+
 export default app;
-
-

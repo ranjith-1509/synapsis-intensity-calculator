@@ -1,26 +1,42 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import ReactApexChart from "react-apexcharts";
 import PrimaryButton from "./ui/PrimaryButton";
+import { onAuthStateChanged } from "firebase/auth";
+import { setDoc, doc } from "firebase/firestore";
+import {
+  auth,
+  serverTimestamp,
+  userSessionsCollection,
+} from "../firebaseConfig";
 import { calculateHRMetrics } from "../Utils/hrUtils";
 import MetricCard from "./dashboard/MetricCard";
 
 const DEFAULT_TARGET_FPS = 30;
 const DEFAULT_MAX_POINTS = 100;
+const RAW_SIGNAL_WINDOW_SECONDS = 120;
 const HeartRateMeasuring = () => {
   const navigate = useNavigate();
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const intervalRef = useRef(null);
-  const startTimeRef = useRef(null);
+  const hrSeriesRef = useRef([]);
+  const hrvSeriesRef = useRef([]);
   const theme = "light";
-  const [intensitySeries, setIntensitySeries] = useState([]); // {x,y}
-  const [heartRate, setHeartRate] = useState("--"); 
-  const [, setExportData] = useState([]); // use export data for export as json or csv
-  
-  const [hrv, setHrv] = useState("--"); 
+  const [intensitySeries, setIntensitySeries] = useState([]);
+  const [heartRate, setHeartRate] = useState("--");
+  const [hrv, setHrv] = useState("--");
+  const [, setExportData] = useState([]);
   const [isCamCollapsed, setIsCamCollapsed] = useState(true);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
+  const [userId, setUserId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const targetFps = DEFAULT_TARGET_FPS;
   const maxPoints = DEFAULT_MAX_POINTS;
@@ -44,86 +60,190 @@ const HeartRateMeasuring = () => {
     setIsFrontCamera(!isFrontCamera);
   };
 
-    // Frame processing using the video element from CameraBox
-    const processFrame = () => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas) return;
-  
-      const width = video.videoWidth || 640;
-      const height = video.videoHeight || 480;
-  
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      canvas.width = width;
-      canvas.height = height;
-      ctx.drawImage(video, 0, 0, width, height);
-  
-      const { data } = ctx.getImageData(0, 0, width, height);
-      let totalIntensity = 0;
-      const pixelCount = width * height;
-      for (let i = 0; i < data.length; i += 4) {
-        const intensity =
-          0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        totalIntensity += intensity;
-      }
-  
-      const avgIntensity = totalIntensity / pixelCount;
-  
-      const now = Date.now();
-      if (!startTimeRef.current) startTimeRef.current = now;
-  
-  
-      // Keep a separate time-series for intensity
-      // Maintain raw values for HR detection
-      setIntensitySeries((prev) => {
-        return [...prev, { x: now, y: Number(avgIntensity.toFixed(2)) }];
-      });
-      setExportData((p) => {
-        const next = [...p, avgIntensity]; // ✅ keep all data (no slice)
-  
-        const result = calculateHRMetrics(next, targetFps);
-        if (result) {
-          setHeartRate(result.heartRate);
-          setHrv(result.hrv);
-  
-        }
-  
-        return next;
-      });
-    };
-  
-    const handleVideoReady = (el) => {
-      videoRef.current = el;
-      if (intervalRef.current) return;
-      intervalRef.current = setInterval(processFrame, 1000 / targetFps);
-    };
-   
   useEffect(() => {
-    if (videoRef.current) {
-      handleVideoReady(videoRef.current);
-      if (intervalRef.current) return;
-      intervalRef.current = setInterval(processFrame, 1000 / targetFps);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUserId(firebaseUser?.uid ?? null);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Frame processing using the video element from CameraBox
+  const processFrame = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    canvas.width = width;
+    canvas.height = height;
+    ctx.drawImage(video, 0, 0, width, height);
+
+    const { data } = ctx.getImageData(0, 0, width, height);
+    let totalIntensity = 0;
+    const pixelCount = width * height;
+    for (let i = 0; i < data.length; i += 4) {
+      const intensity =
+        0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      totalIntensity += intensity;
     }
-  }, [videoRef.current, targetFps, processFrame,handleVideoReady]); //eslint-disable-line react-hooks/exhaustive-deps
+
+    const avgIntensity = totalIntensity / pixelCount;
+
+    const now = Date.now();
+
+ 
+setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(2)) }]);
+    const rawLimit = targetFps * RAW_SIGNAL_WINDOW_SECONDS;
+    setExportData((prev) => {
+      const next = [...prev, avgIntensity];
+      const limited = next.length > rawLimit ? next.slice(-rawLimit) : next;
+
+      const result = calculateHRMetrics(
+        limited,
+        targetFps,
+        hrSeriesRef.current,
+        hrvSeriesRef.current
+      );
+      if (result) {
+        setHeartRate(result.heartRate);
+        setHrv(result.hrv);
+        hrSeriesRef.current = result.hrSeries;
+        hrvSeriesRef.current = result.hrvSeries;
+      }
+
+      return limited;
+    });
+  }, [maxPoints, targetFps]);
+
+  const saveSessionData = useCallback(async () => {
+    if (!userId) return false;
+
+    const maxSamples = 300;
+    const hrPoints = hrSeriesRef.current.slice(-maxSamples);
+    if (hrPoints.length < 100) {
+      return false;
+    }
+
+    const hrvPoints = hrvSeriesRef.current.slice(-maxSamples);
+    const hrvOffset = Math.max(0, hrvPoints.length - hrPoints.length);
+
+    const samples = hrPoints.map((hrPoint, index) => {
+      const hrvPoint = hrvPoints[hrvOffset + index] ?? null;
+      return {
+        timestamp: hrPoint.x,
+        heartRate: hrPoint.y,
+        hrv: hrvPoint ? hrvPoint.y : null,
+      };
+    });
+
+    const heartRates = samples.map((sample) => sample.heartRate);
+    const validHrvValues = samples
+      .map((sample) => sample.hrv)
+      .filter((value) => typeof value === "number" && !Number.isNaN(value));
+
+    const average = (values) =>
+      values.length === 0
+        ? null
+        : Number(
+            (
+              values.reduce((sum, value) => sum + value, 0) / values.length
+            ).toFixed(1)
+          );
+
+    const avgHeartRate = average(heartRates);
+    const avgHrv = average(validHrvValues);
+
+    const firstTimestamp = samples[0]?.timestamp ?? null;
+    const lastTimestamp =
+      samples[samples.length - 1]?.timestamp ?? firstTimestamp ?? null;
+    const durationMs =
+      firstTimestamp && lastTimestamp && lastTimestamp >= firstTimestamp
+        ? lastTimestamp - firstTimestamp
+        : null;
+
+    const sessionsRef = userSessionsCollection(userId);
+    const sessionRef = doc(sessionsRef);
+    const payload = {
+      sessionId: sessionRef.id,
+      createdAt: serverTimestamp(),
+      clientCreatedAt: Date.now(),
+      firstTimestamp,
+      lastTimestamp,
+      durationMs,
+      sampleCount: samples.length,
+      avgHeartRate,
+      avgHrv,
+      metrics: samples,
+    };
+    await setDoc(sessionRef, payload);
+
+    return true;
+  }, [userId]);
+
+  const resetMeasurementState = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    const stream = videoRef.current?.srcObject;
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    videoRef.current = null;
+    canvasRef.current = null;
+    hrSeriesRef.current = [];
+    hrvSeriesRef.current = [];
+    setExportData([]);
+    setIntensitySeries([]);
+    setHeartRate("--");
+    setHrv("--");
+  }, [setExportData, setHeartRate, setHrv, setIntensitySeries]);
+
+  const handleVideoReady = useCallback((el) => {
+    if (!el) return;
+    videoRef.current = el;
+  }, []);
   useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    intervalRef.current = setInterval(processFrame, 1000 / targetFps);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [processFrame, targetFps]);
+
+  useEffect(() => {
+    let cancelled = false;
+  
     (async () => {
       const stream = await getCameraStream("user");
-      if (videoRef.current) videoRef.current.srcObject = stream;
+      if (!cancelled && videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
     })();
+  
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      cancelled = true;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
       const stream = videoRef.current?.srcObject;
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
   }, []);
-
-
-
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
+  
   const intensityOptions = useMemo(() => {
     const lastWindow = intensitySeries.slice(-maxPoints); // ✅ only last 100
 
@@ -163,25 +283,49 @@ const HeartRateMeasuring = () => {
       theme: { mode: theme },
       tooltip: { theme: theme },
     };
-  }, [intensitySeries, theme, maxPoints, targetFps  ]);
-
-
-
-  const handleStopMeasuring = () => {
-    localStorage.setItem("heartRate", heartRate);
-    localStorage.setItem("hrv", hrv);
-    navigate("/dashboard");
-    clearInterval(intervalRef.current);
-    const stream = videoRef.current?.srcObject;
-    if (stream) stream.getTracks().forEach((t) => t.stop());
-    videoRef.current = null;
-    canvasRef.current = null;
-    intervalRef.current = null;
-    startTimeRef.current = null;
-    setIntensitySeries([]);
-    setHeartRate("--");
-    setHrv("--");
-  };
+  }, [intensitySeries, theme, maxPoints, targetFps]);
+  const handleStopMeasuring = useCallback(async () => {
+    try {
+      // ✅ Stop frame processing immediately
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+  
+      // ✅ Stop video tracks
+      const stream = videoRef.current?.srcObject;
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+  
+      // Save data safely
+      localStorage.setItem("heartRate", heartRate);
+      localStorage.setItem("hrv", hrv);
+  
+      let saved = false;
+      if (userId) {
+        try {
+          setIsSaving(true);
+          saved = await saveSessionData(); // Wait until saved
+        } catch (error) {
+          console.error("Failed to save session:", error);
+        } finally {
+          setIsSaving(false);
+        }
+      }
+  
+      // ✅ Reset state AFTER saving and stopping camera
+      resetMeasurementState();
+  
+      // ✅ Give the browser a short delay before navigating (ensures React unmounts properly)
+      setTimeout(() => {
+        navigate("/dashboard", {
+          state: saved ? { sessionSaved: true } : undefined,
+        });
+      }, 300);
+    } catch (err) {
+      console.error("Error while stopping measurement:", err);
+    }
+  }, [heartRate, hrv, navigate, resetMeasurementState, saveSessionData, userId]);
+  
   return (
     <div className="min-h-screen" style={{ background: "#ffffff" }}>
       {/* Top Navigation */}
@@ -248,12 +392,16 @@ const HeartRateMeasuring = () => {
 
         {/* Scrollable Graphs */}
         <div className="space-y-6 mb-6">
-         {/* Metric Cards */}
-         <div className="grid grid-cols-2 gap-3 -mt-6 mb-4 relative z-10 mt-3">
-          <MetricCard icon="❤️" title="HR" value={heartRate || "--"} unit="bpm" />
-          <MetricCard icon="💠" title="HRV" value={hrv || "--"} unit="ms" />
-        </div>
-     
+          {/* Metric Cards */}
+          <div className="grid grid-cols-2 gap-3 -mt-6 mb-4 relative z-10 mt-3">
+            <MetricCard
+              icon="❤️"
+              title="HR"
+              value={heartRate || "--"}
+              unit="bpm"
+            />
+            <MetricCard icon="💠" title="HRV" value={hrv || "--"} unit="ms" />
+          </div>
 
           {/* Graph 3: Intensity */}
           <div
@@ -322,11 +470,14 @@ const HeartRateMeasuring = () => {
       >
         <PrimaryButton
           onClick={handleStopMeasuring}
+          disabled={isSaving}
           style={{
             width: "100%",
+            opacity: isSaving ? 0.7 : 1,
+            pointerEvents: isSaving ? "none" : "auto",
           }}
         >
-          Stop Measuring
+          {isSaving ? "Saving…" : "Stop Measuring"}
         </PrimaryButton>
       </div>
 
@@ -334,75 +485,74 @@ const HeartRateMeasuring = () => {
       {/* <CameraBox onVideoReady={handleVideoReady} /> */}
       {/* Sticky Camera Preview */}
       <div
-  className={`sticky-camera ${isCamCollapsed ? "collapsed" : ""}`}
-  style={{
-    width: isCamCollapsed ? 96 : 160,
-    height: isCamCollapsed ? 96 : 160,
-    position: "fixed",
-    top: 16,
-    right: 16,
-    borderRadius: "12px",
-    overflow: "hidden",
-    border: `3px solid ${"light" ? "#22d3ee" : "#3b82f6"}`,
-    boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-    zIndex: 40,
-    background: "light" ? "#0b1220" : "#fff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  }}
->
-  <video
-    ref={videoRef}
-    autoPlay
-    playsInline
-    muted
-    width="100%"
-    height="100%"
-    style={{ objectFit: "cover" }}
-  />
+        className={`sticky-camera ${isCamCollapsed ? "collapsed" : ""}`}
+        style={{
+          width: isCamCollapsed ? 96 : 160,
+          height: isCamCollapsed ? 96 : 160,
+          position: "fixed",
+          top: 16,
+          right: 16,
+          borderRadius: "12px",
+          overflow: "hidden",
+          border: `3px solid ${"light" ? "#22d3ee" : "#3b82f6"}`,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          zIndex: 40,
+          background: "light" ? "#0b1220" : "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <video
+          ref={handleVideoReady}
+          autoPlay
+          playsInline
+          muted
+          width="100%"
+          height="100%"
+          style={{ objectFit: "cover" }}
+        />
 
-  {/* Collapse button — Left */}
-  <button
-    onClick={() => setIsCamCollapsed((v) => !v)}
-    style={{
-      position: "absolute",
-      top: 6,
-      left: 6,
-      background: "rgba(0,0,0,0.5)",
-      color: "#fff",
-      border: "none",
-      borderRadius: 6,
-      padding: "2px 6px",
-      fontSize: 12,
-      cursor: "pointer",
-    }}
-    aria-label={isCamCollapsed ? "Expand camera" : "Collapse camera"}
-  >
-    {isCamCollapsed ? "↗" : "↘"}
-  </button>
+        {/* Collapse button — Left */}
+        <button
+          onClick={() => setIsCamCollapsed((v) => !v)}
+          style={{
+            position: "absolute",
+            top: 6,
+            left: 6,
+            background: "rgba(0,0,0,0.5)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            padding: "2px 6px",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+          aria-label={isCamCollapsed ? "Expand camera" : "Collapse camera"}
+        >
+          {isCamCollapsed ? "↗" : "↘"}
+        </button>
 
-  {/* ✅ Switch Camera button — Right */}
-  <button
-   onClick={switchCamera}
-    style={{
-      position: "absolute",
-      top: 6,
-      right: 6,
-      background: "rgba(0,0,0,0.5)",
-      color: "#fff",
-      border: "none",
-      borderRadius: 6,
-      padding: "2px 6px",
-      fontSize: 12,
-      cursor: "pointer",
-    }}
-    aria-label="Switch Camera"
-  >
-    ↻
-  </button>
-</div>
-
+        {/* ✅ Switch Camera button — Right */}
+        <button
+          onClick={switchCamera}
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            background: "rgba(0,0,0,0.5)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            padding: "2px 6px",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+          aria-label="Switch Camera"
+        >
+          ↻
+        </button>
+      </div>
 
       <canvas ref={canvasRef} style={{ display: "none" }} />
     </div>
