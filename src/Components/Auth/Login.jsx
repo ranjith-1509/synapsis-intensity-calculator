@@ -42,6 +42,7 @@ const Login = () => {
       const token = await credentials.user.getIdToken();
       localStorage.setItem("firebaseToken", token);
       localStorage.setItem("authEmail", credentials.user.email || "");
+      localStorage.setItem("name", credentials.user.displayName || "");
       navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(formatErrorMessage(err));

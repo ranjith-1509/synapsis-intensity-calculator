@@ -19,6 +19,7 @@ const Dashboard = () => {
   const hideStartScanModal = localStorage.getItem("hideStartScanModal");
   const heartRate = localStorage.getItem("heartRate") || "--";
   const hrv = localStorage.getItem("hrv") || "--";
+  const Name = localStorage.getItem("name") || "";
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -37,6 +38,7 @@ const Dashboard = () => {
   const handleLogout = () => {
     localStorage.removeItem("firebaseToken");
     localStorage.removeItem("authEmail");
+    localStorage.removeItem("name");
     navigate("/login", { replace: true });
   };
 
@@ -82,7 +84,7 @@ const Dashboard = () => {
               className="text-lg"
               style={{ color: "rgba(255,255,255,0.9)", margin: 0 }}
             >
-              Hey Preetam 👋
+              Hey {Name} 👋
             </p>
             <h2
               className="text-sm font-semibold"
