@@ -197,10 +197,6 @@ const RecentSection = ({ handleNoOfRecords }) => {
           hour: "numeric",
           minute: "2-digit",
         }),
-        raw: {
-          ...session,
-          metrics,
-        },
       };
     });
   }, [sessions]);
@@ -209,8 +205,7 @@ const RecentSection = ({ handleNoOfRecords }) => {
     if (!session) return;
     navigate("/session-detail", {
       state: {
-        sessionId: session.id,
-        sessionData: session.raw,
+        initialPeriod: "Day",
       },
     });
   };

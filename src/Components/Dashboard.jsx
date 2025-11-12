@@ -78,17 +78,17 @@ const Dashboard = () => {
           ref={settingsRef}
         >
           <div>
-            <p
+            <div
               className="text-lg"
               style={{ color: "rgba(255,255,255,0.9)", margin: 0 }}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 ml-[5px]">
                 Hey {Name} <img src={WavingHand} alt="Waving Hand" />
               </div>
-            </p>
+            </div>
             <h2
               className="text-sm font-semibold"
-              style={{ color: "#fff", margin: "4px 0 0 0" }}
+              style={{ color: "#fff", margin: "4px 0 0 0",marginLeft: "5px" }}
             >
               Welcome Back
             </h2>

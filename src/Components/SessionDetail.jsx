@@ -1,440 +1,382 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "antd";
 import ReactApexChart from "react-apexcharts";
 import { useLocation, useNavigate } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { getDocs, orderBy, query, where } from "firebase/firestore";
 import { auth, userSessionsCollection } from "../firebaseConfig";
 
+const PERIOD_OPTIONS = ["Day", "Month", "Year"];
 
+const toMillis = (v) => {
+  if (!v) return null;
+  if (typeof v === "number") return v;
+  if (v instanceof Date) return v.getTime();
+  if (v.toMillis) return v.toMillis();
+  if (v.seconds) return v.seconds * 1000;
+  return null;
+};
 
+const getPeriodStart = (period) => {
+  const now = new Date();
+  if (period === "Year") now.setMonth(0, 1);
+  if (period === "Month") now.setDate(1);
+  now.setHours(0, 0, 0, 0);
+  return now.getTime();
+};
 
-const SessionDetail = () => {
+const formatBpm = (v) => (Number.isFinite(v) ? `${v.toFixed(0)} BPM` : "--");
+const formatMs = (v) => (Number.isFinite(v) ? `${v.toFixed(0)} ms` : "--");
+const formatCount = (v) => (Number.isFinite(v) ? v.toLocaleString() : "--");
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+export default function SessionDetail() {
   const navigate = useNavigate();
   const { state } = useLocation();
   const [userId, setUserId] = useState(auth.currentUser?.uid ?? null);
-  const [session, setSession] = useState(state?.sessionData ?? null);
-  const [loading, setLoading] = useState(!state?.sessionData);
-
-  const sessionId = state?.sessionId ?? session?.sessionId ?? session?.id ?? null;
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedPeriod, setSelectedPeriod] = useState(
+    PERIOD_OPTIONS.includes(state?.initialPeriod)
+      ? state.initialPeriod
+      : "Day"
+  );
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUserId(firebaseUser?.uid ?? null);
-    });
-    return () => unsubscribe();
+    const unsub = onAuthStateChanged(auth, (u) => setUserId(u?.uid ?? null));
+    return () => unsub();
   }, []);
 
   useEffect(() => {
-    if (!userId || !sessionId || state?.sessionData) return;
+    if (!userId) {
+      setSessions([]);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
-
     (async () => {
       setLoading(true);
       try {
-        const sessionRef = doc(userSessionsCollection(userId), sessionId);
-        const snap = await getDoc(sessionRef);
-        console.log(snap,"snap")
-        console.log(sessionRef,"sessionRef")
-        if (!cancelled && snap.exists()) {
-          setSession({ id: snap.id, ...snap.data() });
-        }
-      } catch (error) {
-        console.error("Failed to load session:", error);
-      } finally {
+        const start = getPeriodStart(selectedPeriod);
+        const q = query(
+          userSessionsCollection(userId),
+          where("createdAt", ">=", new Date(start)),
+          orderBy("createdAt", "desc")
+        );
+        const snap = await getDocs(q);
+        if (!cancelled)
+          setSessions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch {
         if (!cancelled) {
-          setLoading(false);
+          setError("Unable to load your sessions right now.");
+          setSessions([]);
         }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => (cancelled = true);
+  }, [userId, selectedPeriod]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, sessionId, state?.sessionData]);
-
-  const metrics = useMemo(() => {
-    if (!session || !Array.isArray(session.metrics)) return [];
-    return session.metrics
-      .map((metric) => ({
-        timestamp: metric.timestamp,
-        heartRate: Number(metric.heartRate ?? NaN),
-        hrv: Number(metric.hrv ?? NaN),
-      }))
-      .filter((metric) => !Number.isNaN(metric.heartRate));
-  }, [session]);
-
-  const heartRateSeries = useMemo(
+  const allSamples = useMemo(
     () =>
-      metrics.map((metric) => ({
-        x: metric.timestamp,
-        y: metric.heartRate,
-      })),
-    [metrics]
+      sessions.flatMap((s) =>
+        (s.metrics || [])
+          .map((m) => ({
+            sessionId: s.id,
+            timestamp: toMillis(m.timestamp),
+            heartRate: Number(m.heartRate ?? NaN),
+            hrv: Number(m.hrv ?? NaN),
+          }))
+          .filter((x) => Number.isFinite(x.timestamp))
+      ),
+    [sessions]
   );
 
-  const hrvSeries = useMemo(
-    () =>
-      metrics
-        .filter((metric) => !Number.isNaN(metric.hrv))
-        .map((metric) => ({
-          x: metric.timestamp,
-          y: metric.hrv,
-        })),
-    [metrics]
-  );
-
-  const averages = useMemo(() => {
-    const average = (values) =>
-      values.length === 0
-        ? "--"
-        : (
-            values.reduce((sum, value) => sum + value, 0) / values.length
-          ).toFixed(1);
-
-    const heartRates = metrics.map((metric) => metric.heartRate);
-    const hrvValues = metrics
-      .map((metric) => metric.hrv)
-      .filter((value) => !Number.isNaN(value));
-
+  const aggregates = useMemo(() => {
+    if (!allSamples.length)
+      return {
+        sampleCount: 0,
+        sessionCount: 0,
+        minHeartRate: null,
+        maxHeartRate: null,
+        avgHeartRate: null,
+        avgHrv: null,
+      };
+    const ids = new Set();
+    const hr = [],
+      hrv = [];
+    for (const s of allSamples) {
+      ids.add(s.sessionId);
+      if (Number.isFinite(s.heartRate)) hr.push(s.heartRate);
+      if (Number.isFinite(s.hrv)) hrv.push(s.hrv);
+    }
+    const avg = (a) => (a.length ? a.reduce((x, y) => x + y) / a.length : null);
     return {
-      avgHeartRate: session?.avgHeartRate?.toFixed
-        ? session.avgHeartRate.toFixed(1)
-        : average(heartRates),
-      avgHrv: session?.avgHrv?.toFixed
-        ? session.avgHrv.toFixed(1)
-        : average(hrvValues),
+      sampleCount: allSamples.length,
+      sessionCount: ids.size,
+      minHeartRate: Math.min(...hr),
+      maxHeartRate: Math.max(...hr),
+      avgHeartRate: avg(hr),
+      avgHrv: avg(hrv),
     };
-  }, [metrics, session?.avgHeartRate, session?.avgHrv]);
-
-
-
- 
-
-  const summary = useMemo(() => {
-    const sampleCount = session?.sampleCount ?? metrics.length;
-    const avgHeartRateValue =
-      typeof session?.avgHeartRate === "number"
-        ? session.avgHeartRate
-        : metrics.length > 0
-        ? metrics.reduce((sum, point) => sum + point.heartRate, 0) /
-          metrics.length
-        : null;
-
-    return {
-      sampleCount,
-      avgHeartRateDisplay: averages.avgHeartRate,
-      avgHeartRateValue: avgHeartRateValue,
-      avgHrv: averages.avgHrv,
-    };
-  }, [averages.avgHeartRate, averages.avgHrv, metrics, session?.avgHeartRate, session?.sampleCount]);
+  }, [allSamples]);
 
   const heartRange = useMemo(() => {
-    const heartRates = metrics.map((metric) => metric.heartRate);
-    if (heartRates.length === 0) {
-      return {
-        min: "--",
-        max: "--",
-        avg: "--",
-        statusLabel: "No data",
-        statusColor: "#94a3b8",
-        indicatorLeft: "50%",
-      };
+    const avg = aggregates.avgHeartRate;
+    if (!Number.isFinite(avg))
+      return { avg: "--", statusLabel: "No data", color: "#94a3b8", left: "50%" };
+    let color = "#16a34a";
+    let label = "Normal";
+    if (avg < 60) {
+      color = "#2563eb";
+      label = "Low";
+    } else if (avg > 100) {
+      color = "#ef4444";
+      label = "High";
     }
-
-    const min = Math.min(...heartRates);
-    const max = Math.max(...heartRates);
-    const avgValue =
-      typeof summary.avgHeartRateValue === "number"
-        ? summary.avgHeartRateValue
-        : heartRates.reduce((sum, value) => sum + value, 0) / heartRates.length;
-
-    let statusLabel = "Normal";
-    let statusColor = "#16a34a";
-
-    if (avgValue < 60) {
-      statusLabel = "Low";
-      statusColor = "#2563eb";
-    } else if (avgValue > 100) {
-      statusLabel = "High";
-      statusColor = "#ef4444";
-    }
-
-    const clamp = (value, minValue, maxValue) =>
-      Math.max(minValue, Math.min(maxValue, value));
-    const indicatorPercent = clamp(avgValue, 40, 160);
-    const indicatorLeft = `${
-      ((indicatorPercent - 40) / (160 - 40)) * 100
-    }%`;
-
-    const formatBpm = (value) =>
-      Number.isFinite(value) ? `${Math.round(value)} BPM` : "--";
-
+    const left = `${((clamp(avg, 40, 160) - 40) / 120) * 100}%`;
     return {
-      min: `${min.toFixed(0)} BPM`,
-      max: `${max.toFixed(0)} BPM`,
-      avg: formatBpm(avgValue),
-      statusLabel,
-      statusColor,
-      indicatorLeft,
+      min: formatBpm(aggregates.minHeartRate),
+      max: formatBpm(aggregates.maxHeartRate),
+      avg: formatBpm(avg),
+      statusLabel: label,
+      color,
+      left,
     };
-  }, [metrics, summary.avgHeartRateValue]);
+  }, [aggregates]);
 
-  const chartOptions = useMemo(
-    () => ({
-      chart: { type: "line", toolbar: { show: false } },
-      stroke: { curve: "smooth", width: 2 },
-      dataLabels: { enabled: false },
-      tooltip: {
-        x: { format: "HH:mm:ss" },
+  const isDay = selectedPeriod === "Day";
+  const chartType = isDay ? "line" : "bar";
+
+  const makeSeries = useCallback(
+    (key) => {
+    if (isDay)
+      return [
+        {
+          name: key === "heartRate" ? "Heart Rate" : "HRV",
+          data: allSamples
+            .filter((s) => Number.isFinite(s[key]))
+            .map((s) => ({ x: s.timestamp, y: s[key] })),
+        },
+      ];
+    const buckets = new Map();
+    const fmt =
+      selectedPeriod === "Year"
+        ? new Intl.DateTimeFormat("en", { month: "short" })
+        : new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+    for (const s of allSamples) {
+      if (!Number.isFinite(s[key])) continue;
+      const label = fmt.format(new Date(s.timestamp));
+      const e = buckets.get(label) ?? { sum: 0, count: 0 };
+      e.sum += s[key];
+      e.count++;
+      buckets.set(label, e);
+    }
+    return [
+      {
+        name: key === "heartRate" ? "Avg HR" : "Avg HRV",
+        data: [...buckets.entries()].map(([x, { sum, count }]) => ({
+          x,
+          y: +(sum / count).toFixed(1),
+        })),
       },
-      xaxis: {
-        type: "datetime",
-        labels: { datetimeUTC: false },
-      },
-    }),
-    []
+    ];
+    },
+    [allSamples, isDay, selectedPeriod]
   );
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ color: "#6b7280" }}>Loading session…</span>
-      </div>
-    );
-  }
+  const heartRateSeries = useMemo(
+    () => makeSeries("heartRate"),
+    [makeSeries]
+  );
+  const hrvSeries = useMemo(() => makeSeries("hrv"), [makeSeries]);
 
-  if (!session) {
+  const baseChart = isDay
+    ? {
+        chart: { type: "line", toolbar: { show: false } },
+        stroke: { curve: "smooth", width: 2 },
+        xaxis: { type: "datetime", labels: { datetimeUTC: false } },
+        tooltip: { x: { format: "MMM dd, HH:mm" } },
+        dataLabels: { enabled: false },
+      }
+    : {
+        chart: { type: "bar", toolbar: { show: false } },
+        plotOptions: { bar: { borderRadius: 6, columnWidth: "55%" } },
+        xaxis: { type: "category", labels: { rotate: -35 } },
+        dataLabels: { enabled: false },
+      };
+
+  const heartRateChartOptions = {
+    ...baseChart,
+    colors: ["#1857C1"],
+    stroke: { ...(baseChart.stroke ?? {}), colors: ["#1857C1"] },
+    yaxis: { title: { text: "BPM" } },
+  };
+  const hrvChartOptions = {
+    ...baseChart,
+    colors: ["#14b8a6"],
+    stroke: { ...(baseChart.stroke ?? {}), colors: ["#14b8a6"] },
+    yaxis: { title: { text: "ms" } },
+  };
+
+  if (loading)
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center" }}>
-          <p style={{ color: "#6b7280" }}>Session not found.</p>
-          <Button type="primary" onClick={() => navigate(-1)}>
-            Go back
-          </Button>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-screen text-gray-500">
+        Loading your insights…
       </div>
     );
-  }
+  if (!userId)
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen text-gray-500">
+        <p>Please sign in to view your history.</p>
+        <Button type="primary" onClick={() => navigate("/login")}>
+          Log in
+        </Button>
+      </div>
+    );
+
+  const noSamples = allSamples.length === 0;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
-      <header
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          background: "#ffffff",
-          borderBottom: "1px solid #e5e7eb",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px",
-            maxWidth: 480,
-            margin: "0 auto",
-          }}
-        >
+    <div className="min-h-screen bg-slate-50">
+      {error && <div className="p-2 text-red-500 text-center">{error}</div>}
+
+      {/* Header */}
+      <header className="sticky top-0 bg-white border-b border-gray-200 z-10">
+        <div className="max-w-lg mx-auto flex items-center justify-between p-4">
           <Button
-            aria-label="Go back"
-            tabIndex={0}
             onClick={() => navigate(-1)}
             shape="circle"
-            style={{ border: "none", background: "#f3f4f6", color: "#6b7280" }}
+            className="!bg-gray-100 !border-none !text-gray-500"
           >
             ‹
           </Button>
-          <div style={{ textAlign: "center", flex: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 18, color: "#111827" }}>Scan Results</div>
-          </div>
-          <div style={{ width: 44 }} />
+          <h1 className="text-lg font-semibold">Insights</h1>
+          <div className="w-6" />
         </div>
       </header>
 
-      <main style={{ maxWidth: 480, margin: "0 auto", padding: "16px" }}>
-        <section
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e5e7eb",
-            borderRadius: 16,
-            padding: 20,
-            marginBottom: 16,
-            display: "flex",
-            flexDirection: "column",
-            gap: 18,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#111827" }}>
-              Your Heart range is
+      <main className="max-w-lg mx-auto p-4">
+        {/* Period Selector */}
+        <div className="flex justify-center gap-3 mb-5">
+          {PERIOD_OPTIONS.map((p) => {
+            const active = p === selectedPeriod;
+            return (
+              <button
+                key={p}
+                onClick={() => setSelectedPeriod(p)}
+                className={`px-4 py-2 rounded-full font-semibold text-sm ${
+                  active
+                    ? "bg-blue-700 text-white"
+                    : "border border-blue-200 text-blue-700 bg-white"
+                }`}
+              >
+                {p}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Summary Card */}
+        <section className="bg-white border border-gray-200 rounded-2xl p-4 mb-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-base font-semibold">
+              {isDay ? "Your Heart range is" : `${selectedPeriod} summary`}
             </h2>
             <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "6px 12px",
-                borderRadius: 999,
-                fontSize: 13,
-                fontWeight: 600,
-                background: `${heartRange.statusColor}20`,
-                color: heartRange.statusColor,
-              }}
+              className={`px-3 py-1 rounded-full font-semibold text-sm ${
+                isDay ? "" : "bg-blue-50 text-slate-900"
+              }`}
+              style={
+                isDay
+                  ? { background: `${heartRange.color}20`, color: heartRange.color }
+                  : {}
+              }
             >
-              <span
-                style={{
-                  display: "inline-flex",
-                  width: 10,
-                  height: 10,
-                  borderRadius: "50%",
-                  background: heartRange.statusColor,
-                }}
-              />
-              {heartRange.statusLabel}
+              {isDay
+                ? heartRange.statusLabel
+                : `Avg ${formatBpm(aggregates.avgHeartRate)}`}
             </span>
           </div>
 
-          <div style={{ position: "relative", height: 12, marginTop: 4 }}>
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                borderRadius: 999,
-                background:
-                  "linear-gradient(90deg, #2563eb 0%, #22c55e 50%, #ef4444 100%)",
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: heartRange.indicatorLeft,
-                transform: "translate(-50%, -50%)",
-                width: 12,
-                height: 24,
-                borderRadius: "25%",
-                border: "2px solid #ffffff",
-                background: heartRange.statusColor,
-              }}
-            />
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 12,
-              fontSize: 13,
-              color: "#475569",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: "#2563eb",
-                }}
+          {isDay ? (
+            <div className="relative h-3 mt-2 rounded-full bg-gradient-to-r from-blue-600 via-green-500 to-red-500">
+              <div
+                className="absolute top-1/2 w-3 h-6 rounded-sm border-2 border-white -translate-y-1/2"
+                style={{ left: heartRange.left, background: heartRange.color }}
               />
-              <div>
-                <div style={{ fontWeight: 600, color: "#111827" }}>Min BPM</div>
-                <div>{heartRange.min}</div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 mt-2">
+              Based on {formatCount(aggregates.sampleCount)} readings across{" "}
+              {formatCount(aggregates.sessionCount)} sessions this{" "}
+              {selectedPeriod.toLowerCase()}.
+            </p>
+          )}
+
+          <div className="grid grid-cols-2 gap-4 mt-4 text-center">
+            <div>
+              <div className="text-xs text-gray-500">Average HR</div>
+              <div className="text-xl font-semibold">
+                {formatBpm(aggregates.avgHeartRate)}
               </div>
             </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: "#16a34a",
-                }}
-              />
-              <div>
-                <div style={{ fontWeight: 600, color: "#111827" }}>Max BPM</div>
-                <div>{heartRange.max}</div>
+            <div>
+              <div className="text-xs text-gray-500">Average HRV</div>
+              <div className="text-xl font-semibold">
+                {formatMs(aggregates.avgHrv)}
               </div>
             </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: "#ef4444",
-                }}
-              />
-              <div>
-                <div style={{ fontWeight: 600, color: "#111827" }}>Avg</div>
-                <div>{heartRange.avg}</div>
+            <div>
+              <div className="text-xs text-gray-500">Sessions</div>
+              <div className="text-xl font-semibold">
+                {formatCount(aggregates.sessionCount)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500">Data points</div>
+              <div className="text-xl font-semibold">
+                {formatCount(aggregates.sampleCount)}
               </div>
             </div>
           </div>
         </section>
 
-        <section
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e5e7eb",
-            borderRadius: 16,
-            padding: 16,
-            marginBottom: 16,
-          }}
-        >
-          <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "#111827" }}>
-            Heart Rate
-          </h3>
-          <ReactApexChart
-            options={{
-              ...chartOptions,
-              stroke: { ...chartOptions.stroke, colors: ["#1857C1"] },
-              yaxis: { title: { text: "BPM" } },
-            }}
-            series={[{ name: "Heart Rate", data: heartRateSeries }]}
-            type="line"
-            height={220}
-          />
+        {/* Charts */}
+        <section className="bg-white border border-gray-200 rounded-2xl p-4 mb-4">
+          <h3 className="text-sm font-semibold mb-3">Heart rate trend</h3>
+          {noSamples ? (
+            <p className="p-6 text-center text-slate-500 bg-slate-50 rounded-xl text-sm">
+              Not enough data in this period yet.
+            </p>
+          ) : (
+            <ReactApexChart
+              options={heartRateChartOptions}
+              series={heartRateSeries}
+              type={chartType}
+              height={220}
+            />
+          )}
         </section>
 
-        <section
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e5e7eb",
-            borderRadius: 16,
-            padding: 16,
-            marginBottom: 16,
-          }}
-        >
-          <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "#111827" }}>
-            HRV
-          </h3>
-          <ReactApexChart
-            options={{
-              ...chartOptions,
-              stroke: { ...chartOptions.stroke, colors: ["#14b8a6"] },
-              yaxis: { title: { text: "ms" } },
-            }}
-            series={[{ name: "HRV", data: hrvSeries }]}
-            type="line"
-            height={220}
-          />
+        <section className="bg-white border border-gray-200 rounded-2xl p-4">
+          <h3 className="text-sm font-semibold mb-3">HRV trend</h3>
+          {noSamples ? (
+            <p className="p-6 text-center text-slate-500 bg-slate-50 rounded-xl text-sm">
+              HRV data not available for this period.
+            </p>
+          ) : (
+            <ReactApexChart
+              options={hrvChartOptions}
+              series={hrvSeries}
+              type={chartType}
+              height={220}
+            />
+          )}
         </section>
       </main>
     </div>
   );
-};
-
-export default SessionDetail;
+}
