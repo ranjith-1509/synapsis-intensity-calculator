@@ -113,7 +113,6 @@ const RecentSection = ({ handleNoOfRecords }) => {
     let cancelled = false;
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log(firebaseUser,"firebaseUser")
       if (!firebaseUser) {
         if (!cancelled) {
           setSessions([]);

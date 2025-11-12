@@ -7,7 +7,21 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        inter: [
+        primary: [
+          "Inter",
+          "ui-sans-serif",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "Noto Sans",
+          "Ubuntu",
+          "Cantarell",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif",
+        ],
+        secondary: [
           "Inter",
           "ui-sans-serif",
           "system-ui",
