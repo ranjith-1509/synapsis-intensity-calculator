@@ -245,7 +245,7 @@ export default function SessionDetail() {
 
       {/* Header */}
       <header className="sticky top-0 bg-white border-b border-gray-200 z-10">
-        <div className="max-w-lg mx-auto flex items-center justify-between p-4">
+        <div className="max-w-lg lg:max-w-5xl mx-auto flex items-center justify-between p-4">
           <Button
             onClick={() => navigate(-1)}
             shape="circle"
@@ -258,7 +258,7 @@ export default function SessionDetail() {
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto p-4">
+      <main className="max-w-lg lg:max-w-5xl mx-auto p-4">
         {/* Period Selector */}
         <div className="flex justify-center gap-3 mb-5">
           {PERIOD_OPTIONS.map((p) => {
@@ -316,7 +316,7 @@ export default function SessionDetail() {
             </p>
           )}
 
-          <div className="grid grid-cols-2 gap-4 mt-4 text-center">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4 text-center">
             <div>
               <div className="text-xs text-gray-500">Average HR</div>
               <div className="text-xl font-semibold">

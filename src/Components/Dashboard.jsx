@@ -58,54 +58,26 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: "#f8fafc" }}>
+    <div className="min-h-screen bg-[#f8fafc]">
       {/* Hero Section */}
-      <div
-        className="relative"
-        style={{
-          background: "#1857C1",
-          paddingTop: 40,
-          paddingBottom: 20,
-          paddingLeft: 16,
-          paddingRight: 16,
-          borderRadius: "0 0 33px 33px",
-        }}
-      >
+      <div className="relative mx-auto max-w-xl rounded-b-[32px] bg-[#1857C1] px-4 pt-10 pb-6 text-white sm:px-6 md:max-w-4xl  md:pb-8">
         {/* Header */}
-
-        <div
-          className="flex items-start justify-between mb-4"
-          ref={settingsRef}
-        >
-          <div>
-            <div
-              className="text-lg"
-              style={{ color: "rgba(255,255,255,0.9)", margin: 0 }}
-            >
-              <div className="flex items-center gap-2 ml-[5px]">
-                Hey {Name} <img src={WavingHand} alt="Waving Hand" />
+        <div className="mb-6 flex items-start justify-between md:items-center" ref={settingsRef}>
+          <div className="space-y-1">
+            <div className="text-base text-white/90 md:text-lg">
+              <div className="ml-1 flex items-center gap-2">
+                Hey {Name} <img src={WavingHand} alt="Waving Hand" className="h-5 w-5 md:h-6 md:w-6" />
               </div>
             </div>
-            <h2
-              className="text-sm font-semibold"
-              style={{ color: "#fff", margin: "4px 0 0 0",marginLeft: "5px" }}
-            >
+            <h2 className="ml-1 font-secondary text-sm font-semibold text-white/95 md:text-base">
               Welcome Back
             </h2>
           </div>
-          <div style={{ position: "relative" }}>
+
+          <div className="relative">
             <button
               onClick={() => setIsMenuOpen((prev) => !prev)}
-              className="rounded-full flex items-center justify-center"
-              style={{
-                width: 36,
-                height: 36,
-                background: "rgba(255,255,255,0.2)",
-                border: "none",
-                color: "#fff",
-                fontSize: 18,
-                cursor: "pointer",
-              }}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white transition hover:bg-white/30"
               aria-haspopup="menu"
               aria-expanded={isMenuOpen}
             >
@@ -114,37 +86,17 @@ const Dashboard = () => {
             {isMenuOpen && (
               <div
                 role="menu"
-                style={{
-                  position: "absolute",
-                  top: 44,
-                  right: 0,
-                  background: "#ffffff",
-                  borderRadius: 16,
-                  boxShadow: "0 12px 32px rgba(15,23,42,0.18)",
-                  padding: "8px",
-                  width: 110,
-                  zIndex: 20,
-                }}
+                className="absolute right-0 mt-3 w-32 rounded-2xl bg-white p-2 shadow-2xl ring-1 ring-slate-900/5 z-20"
               >
                 <button
                   role="menuitem"
                   onClick={handleLogout}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    background: "transparent",
-                    border: "none",
-                    fontSize: 14,
-                    color: "#334155",
-                    cursor: "pointer",
-                  }}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-100"
                 >
-                  <span role="img" aria-hidden="true">
+                  <span aria-hidden="true">
                     <LogoutOutlined />
                   </span>
-                  <span>Logout</span>
+                  Logout
                 </button>
               </div>
             )}
@@ -152,86 +104,69 @@ const Dashboard = () => {
         </div>
 
         {/* Heart Rate Measuring Card */}
-        <div
-          className="rounded-3xl p-4"
-          style={{
-            background: "#fff",
-          }}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <span style={{ fontSize: 18 }}>
-              <img src={HeartPulseIcon} alt="Heart Pulse" className="w-6 h-6" />
-            </span>
-            <span
-              className="font-semibold"
-              style={{ color: "#111", fontSize: 15, width: "100%" }}
-            >
-              Heart Rate Measuring
-            </span>
-          </div>
-          <p className="text-xs mb-3" style={{ color: "#9ca3af" }}>
-            {noOfRecords > 0
-              ? `${noOfRecords} records`
-              : noOfRecords === 0
-              ? "No records"
-              : "Loading..."}
-          </p>
-
-          {/* Preview Chart */}
+        <div className="relative overflow-hidden rounded-3xl bg-white px-5 py-6 shadow-lg shadow-slate-900/10 md:flex md:items-center md:justify-between md:gap-6 md:px-6">
+          <div className="flex flex-1 flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <img src={HeartPulseIcon} alt="Heart Pulse" className="h-8 w-8 md:h-9 md:w-9" />
+              <span className="font-secondary text-base font-semibold text-slate-900 md:text-lg">
+                Heart Rate Measuring
+              </span>
+            </div>
+            <p className="text-sm text-slate-500">
+              {noOfRecords > 0
+                ? `${noOfRecords} records`
+                : noOfRecords === 0
+                ? "No records"
+                : "Loading..."}
+            </p>
             <img
-              src={sampleWaves}
-              alt="Sample Waves"
-              style={{ width: "307px" ,float: "right"}}
-            />
+  src={sampleWaves}
+  alt="Sample Waves"
+  className="
+    w-42            /* default (mobile) */
+    sm:w-40         /* small tablets */
+    md:w-56         /* tablets */
+    lg:w-72         /* laptops */
+    xl:w-80         /* large desktops */
+    self-end
+    md:mt-0
+  "
+/>
 
-          <PrimaryButton onClick={onStartMeasuring}>
-            Start Measuring
-          </PrimaryButton>
+            <PrimaryButton
+              onClick={onStartMeasuring}
+              className="w-full md:w-auto md:self-start md:px-6"
+            >
+              Start Measuring
+            </PrimaryButton>
+          </div>
+      
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="px-4 pb-8 mt-10">
-        {/* Metric Cards */}
-        <div className="grid grid-cols-2 gap-3 -mt-6 mb-4 relative z-10">
+      <div className="mx-auto mt-10 max-w-xl px-4 pb-12 sm:px-6 md:max-w-4xl">
+        <div className="relative z-10 mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
           <MetricCard
-            icon={
-              <img
-                src={hr}
-                alt="Heart Pulse"
-                className="w-6 h-6"
-                style={{ width: "54px", height: "51px" }}
-              />
-            }
+            icon={<img src={hr} alt="Heart Pulse" className="h-12 w-12 sm:h-14 sm:w-14" />}
             title="HR"
             value={heartRate}
             unit="bpm"
           />
           <MetricCard
-            icon={
-              <img
-                src={hrvIcon}
-                alt="Heart Pulse"
-                className="w-6 h-6"
-                style={{ width: "54px", height: "51px" }}
-              />
-            }
+            icon={<img src={hrvIcon} alt="Heart Pulse" className="h-12 w-12 sm:h-14 sm:w-14" />}
             title="HRV"
             value={hrv}
             unit="ms"
           />
+          <div className="col-span-2 hidden md:block" />
         </div>
 
-        {/* Recent Scan */}
-        <div className="mb-5">
+        <div className="mb-6">
           <RecentSection handleNoOfRecords={handleNoOfRecords} />
         </div>
       </div>
 
-      {/* Floating Camera - Draggable */}
-      {/* <CameraBox /> */}
-
-      {/* Start Scan Modal */}
       <StartScanModal
         open={isModalOpen}
         onClose={() => setIsModalOpen(false)}
