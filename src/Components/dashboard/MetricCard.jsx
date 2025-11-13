@@ -13,7 +13,7 @@ const MetricCard = ({ icon, title, value, unit }) => {
             {title}
           </span>
         </div>
-        <button
+        {/* <button
           style={{
             background: "transparent",
             border: "none",
@@ -24,7 +24,7 @@ const MetricCard = ({ icon, title, value, unit }) => {
           }}
         >
           ⋮
-        </button>
+        </button> */}
       </div>
       <div>
         <span className="font-bold" style={{ fontSize: 28, color: "#111" }}>
