@@ -15,6 +15,7 @@ import {
   serverTimestamp,
   userSessionsCollection,
 } from "../firebaseConfig";
+import { GrPowerReset } from "react-icons/gr";
 import { calculateHRMetrics } from "../Utils/hrUtils";
 import MetricCard from "./dashboard/MetricCard";
 import hrvIcon from "../images/hrv.svg";
@@ -227,14 +228,14 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
 
   useEffect(() => {
     let cancelled = false;
-  
+
     (async () => {
       const stream = await getCameraStream("user");
       if (!cancelled && videoRef.current) {
         videoRef.current.srcObject = stream;
       }
     })();
-  
+
     return () => {
       cancelled = true;
       if (intervalRef.current) {
@@ -245,7 +246,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
   }, []);
-  
+
   const intensityOptions = useMemo(() => {
     const lastWindow = intensitySeries.slice(-maxPoints); // ✅ only last 100
 
@@ -258,20 +259,35 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
       yMin = Math.max(min - 1, 0);
       yMax = Math.min(max + 1, 255);
     }
+    const baseColor = theme === "dark" ? "#10b981" : "#14b8a6";
     return {
       chart: {
-        type: "line",
-        animations: { enabled: true },
+        type: "area",
+        animations: { enabled: false },
         toolbar: { show: false },
         zoom: { enabled: false },
       },
       stroke: {
         curve: "smooth",
         width: 2,
-        colors: [theme === "dark" ? "#10b981" : "#14b8a6"],
+        colors: [baseColor],
       },
       grid: { borderColor: theme === "dark" ? "#333" : "#ddd" },
       dataLabels: { enabled: false },
+      fill: {
+        type: "gradient",
+        colors: [baseColor],
+        gradient: {
+          shade: "light",
+          type: "vertical",
+          shadeIntensity: 0.5,
+          inverseColors: false,
+          gradientToColors: [baseColor],
+          opacityFrom: 0.5,
+          opacityTo: 0.35,
+          stops: [0, 35, 70, 100],
+        },
+      },
       xaxis: {
         type: "datetime",
         labels: { style: { colors: theme === "dark" ? "#e5e5e5" : "#111" } },
@@ -293,15 +309,15 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-  
+
       // ✅ Stop video tracks
       const stream = videoRef.current?.srcObject;
       if (stream) stream.getTracks().forEach((t) => t.stop());
-  
+
       // Save data safely
       localStorage.setItem("heartRate", heartRate);
       localStorage.setItem("hrv", hrv);
-  
+
       let saved = false;
       if (userId) {
         try {
@@ -313,10 +329,10 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
           setIsSaving(false);
         }
       }
-  
+
       // ✅ Reset state AFTER saving and stopping camera
       resetMeasurementState();
-  
+
       // ✅ Give the browser a short delay before navigating (ensures React unmounts properly)
       setTimeout(() => {
         navigate("/dashboard", {
@@ -327,7 +343,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
       console.error("Error while stopping measurement:", err);
     }
   }, [heartRate, hrv, navigate, resetMeasurementState, saveSessionData, userId]);
-  
+
   return (
     <div className="min-h-screen" style={{ background: "#ffffff" }}>
       {/* Top Navigation */}
@@ -401,8 +417,9 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
               title="HR"
               value={heartRate || "--"}
               unit="bpm"
+           showReset={false}
             />
-            <MetricCard icon={<img src={hrvIcon} alt="Heart Pulse" className="w-6 h-6"  style={{width: "54px", height: "51px"}}/>} title="HRV" value={hrv || "--"} unit="ms" />
+            <MetricCard icon={<img src={hrvIcon} alt="Heart Pulse" className="w-6 h-6"  style={{width: "54px", height: "51px"}}/>} title="HRV" value={hrv || "--"} unit="ms" showReset={false} />
           </div>
 
           {/* Graph 3: Intensity */}
@@ -452,7 +469,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
                 <ReactApexChart
                   options={intensityOptions}
                   series={[{ name: "Intensity", data: intensitySeries }]}
-                  type="line"
+                  type="area"
                   height={300}
                 />
               )}
@@ -552,7 +569,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
           }}
           aria-label="Switch Camera"
         >
-          ↻
+          <GrPowerReset />
         </button>
       </div>
 

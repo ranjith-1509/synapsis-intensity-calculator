@@ -1,6 +1,8 @@
 import React from "react";
+import { GrPowerReset } from "react-icons/gr";
+import { Tooltip } from "antd";
 
-const MetricCard = ({ icon, title, value, unit }) => {
+const MetricCard = ({ icon, title, value, unit,showReset = true, onReset }) => {
   return (
     <div
       className="rounded-2xl p-4"
@@ -13,18 +15,20 @@ const MetricCard = ({ icon, title, value, unit }) => {
             {title}
           </span>
         </div>
-        {/* <button
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "#9ca3af",
-            fontSize: 18,
-            cursor: "pointer",
-            padding: 0,
-          }}
-        >
-          ⋮
-        </button> */}
+        {showReset && <Tooltip title="Reset">
+          <button onClick={onReset}>
+            <GrPowerReset 
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#9ca3af",
+              fontSize: 18,
+              cursor: "pointer",
+              padding: 0,
+            }}/>
+          </button>
+        </Tooltip>}
+        
       </div>
       <div>
         <span className="font-bold" style={{ fontSize: 28, color: "#111" }}>

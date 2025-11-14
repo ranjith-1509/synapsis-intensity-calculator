@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogoutOutlined } from "@ant-design/icons";
 import MetricCard from "./dashboard/MetricCard";
@@ -17,11 +17,11 @@ const Dashboard = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [noOfRecords, setNoOfRecords] = useState("");
+  const [heartRate, setHeartRate] = useState(localStorage.getItem("heartRate") || "--");
+  const [hrv, setHrv] = useState(localStorage.getItem("hrv") || "--");
   const settingsRef = useRef(null);
 
   const hideStartScanModal = localStorage.getItem("hideStartScanModal");
-  const heartRate = localStorage.getItem("heartRate") || "--";
-  const hrv = localStorage.getItem("hrv") || "--";
   const Name = localStorage.getItem("name") || "";
 
   useEffect(() => {
@@ -38,15 +38,33 @@ const Dashboard = () => {
     };
   }, [isMenuOpen]);
 
+  // Sync with localStorage changes (e.g., when returning from heart rate measuring)
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const storedHeartRate = localStorage.getItem("heartRate") || "--";
+      const storedHrv = localStorage.getItem("hrv") || "--";
+      setHeartRate(storedHeartRate);
+      setHrv(storedHrv);
+    };
+
+    // Check on mount and when window gains focus
+    handleStorageChange();
+    window.addEventListener("focus", handleStorageChange);
+    
+    return () => {
+      window.removeEventListener("focus", handleStorageChange);
+    };
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem("firebaseToken");
     localStorage.removeItem("authEmail");
     localStorage.removeItem("name");
     navigate("/login", { replace: true });
   };
-  const handleNoOfRecords = (noOfRecords) => {
+  const handleNoOfRecords = useCallback((noOfRecords) => {
     setNoOfRecords(noOfRecords);
-  };
+  }, []);
 
 
   const onStartMeasuring = () => {
@@ -152,12 +170,20 @@ const Dashboard = () => {
             title="HR"
             value={heartRate}
             unit="bpm"
+            onReset={() => {
+              setHeartRate("--");
+              localStorage.setItem("heartRate", "--");
+            }}
           />
           <MetricCard
             icon={<img src={hrvIcon} alt="Heart Pulse" className="h-12 w-12 sm:h-14 sm:w-14" />}
             title="HRV"
             value={hrv}
             unit="ms"
+            onReset={() => {
+              setHrv("--");
+              localStorage.setItem("hrv", "--");
+            }}
           />
           <div className="col-span-2 hidden md:block" />
         </div>

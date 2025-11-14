@@ -3,9 +3,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ReactApexChart from "react-apexcharts";
 import { onAuthStateChanged } from "firebase/auth";
-import { getDocs, limit, orderBy, query } from "firebase/firestore";
-import { auth, userSessionsCollection } from "../../firebaseConfig";
+import { deleteDoc, doc, getDocs, limit, orderBy, query } from "firebase/firestore";
+import { auth, db, userSessionsCollection } from "../../firebaseConfig";
 import HeartPulse from "../../images/heartpulse.svg";
+import { MdDeleteForever } from "react-icons/md";
+import { Tooltip, Modal, notification } from "antd";
 
 
 
@@ -17,7 +19,7 @@ const toDate = (value) => {
   return null;
 };
 
-const RecentItem = ({ session, onOpen }) => {
+const RecentItem = ({ session, onOpen, onDelete }) => {
   const chartData = useMemo(() => {
     if (!Array.isArray(session.metrics) || session.metrics.length === 0) {
       return Array.from({ length: 100 }, () => 70);
@@ -73,7 +75,20 @@ const RecentItem = ({ session, onOpen }) => {
           <span className="text-xs">
             {session.timeLabel}
           </span>
-          <span style={{ fontSize: 16 }}>›</span>
+          <span style={{ fontSize: 16 }}>
+            <Tooltip title="Delete">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete(session.id);
+                }}
+                className="p-1"
+              >
+                <MdDeleteForever style={{ color: "#D55F5A", fontSize: 20, cursor: "pointer" }} />
+              </button>
+            </Tooltip>
+          </span>
         </div>
       </div>
 
@@ -108,6 +123,22 @@ const RecentSection = ({ handleNoOfRecords }) => {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState(null);
+  const [sessionToDelete, setSessionToDelete] = useState(null);
+  const [isConfirmVisible, setIsConfirmVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [notifyApi, notifyContextHolder] = notification.useNotification();
+
+  const showToast = (content, type = "success") => {
+    const notifier =
+      typeof notifyApi[type] === "function" ? notifyApi[type] : notifyApi.open;
+    notifier({
+      message: content,
+      placement: "topRight",
+      duration: 2,
+      className: "rounded-xl shadow-2xl",
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -118,9 +149,11 @@ const RecentSection = ({ handleNoOfRecords }) => {
           setSessions([]);
           setLoading(false);
         }
+        setUserId(null);
         return;
       }
 
+      setUserId(firebaseUser.uid);
       setLoading(true);
       try {
         const sessionsRef = userSessionsCollection(firebaseUser.uid);
@@ -209,8 +242,56 @@ const RecentSection = ({ handleNoOfRecords }) => {
     });
   };
 
-  return (
+  const handleDelete = async (sessionId) => {
+    const currentUid = userId ?? auth.currentUser?.uid ?? null;
+    if (!currentUid) {
+      showToast("Please sign in to delete sessions.", "error");
+      return Promise.reject(new Error("No user"));
+    }
+    try {
+      const sessionRef = doc(db, "users", currentUid, "sessions", sessionId);
+      await deleteDoc(sessionRef);
+      setSessions((prev) => {
+        const next = prev.filter((session) => session.id !== sessionId);
+        handleNoOfRecords(next.length);
+        return next;
+      });
+      showToast("Session deleted successfully.", "success");
+    } catch (error) {
+      console.error("Failed to delete session:", error);
+      showToast("Unable to delete session right now.", "error");
+      throw error;
+    }
+  };
+
+  const confirmDelete = (sessionId) => {
+    setSessionToDelete(sessionId);
+    setIsConfirmVisible(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!sessionToDelete) return;
+    setIsDeleting(true);
+    try {
+      await handleDelete(sessionToDelete);
+      setIsConfirmVisible(false);
+      setSessionToDelete(null);
+    } catch {
+      // errors handled in handleDelete
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    if (isDeleting) return;
+    setIsConfirmVisible(false);
+    setSessionToDelete(null);
+  };
+
+    return (
     <div>
+      {notifyContextHolder}
       <div className="flex items-center justify-between mb-3">
         <h4 className="font-semibold" style={{ margin: 0, fontSize: 16, color: "#111" }}>
           Recent Scan
@@ -239,9 +320,32 @@ const RecentSection = ({ handleNoOfRecords }) => {
 
       <div>
         {summaries.map((session) => (
-          <RecentItem key={session.id} session={session} onOpen={() => openSession(session)} />
+          <RecentItem
+            key={session.id}
+            session={session}
+            onOpen={() => openSession(session)}
+            onDelete={confirmDelete}
+          />
         ))}
       </div>
+
+      <Modal
+        open={isConfirmVisible}
+        centered
+        width={350}
+        title="Are you sure you want to delete this session?"
+        okText="Delete"
+        cancelText="Cancel"
+        okType="danger"
+        okButtonProps={{ loading: isDeleting, danger: true }}
+        cancelButtonProps={{ disabled: isDeleting }}
+        onOk={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      >
+        <p className="text-sm text-slate-600">
+          This action cannot be undone and the session data will be removed permanently.
+        </p>
+      </Modal>
     </div>
   );
 };
