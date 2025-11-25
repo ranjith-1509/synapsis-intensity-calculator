@@ -40,11 +40,6 @@ const HeartRateMeasuring = () => {
   const [isFrontCamera, setIsFrontCamera] = useState(true);
   const [userId, setUserId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isHybridMode, setIsHybridMode] = useState(false);
-  const frontVideoRef = useRef(null);
-  const backVideoRef = useRef(null);
-  const frontStreamRef = useRef(null);
-  const backStreamRef = useRef(null);
 
   const targetFps = DEFAULT_TARGET_FPS;
   const maxPoints = DEFAULT_MAX_POINTS;
@@ -212,15 +207,6 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
     setIntensitySeries([]);
     setHeartRate("--");
     setHrv("--");
-    if (frontStreamRef.current) {
-      frontStreamRef.current.getTracks().forEach((track) => track.stop());
-      frontStreamRef.current = null;
-    }
-    if (backStreamRef.current) {
-      backStreamRef.current.getTracks().forEach((track) => track.stop());
-      backStreamRef.current = null;
-    }
-    setIsHybridMode(false);
   }, [setExportData, setHeartRate, setHrv, setIntensitySeries]);
 
   const handleVideoReady = useCallback((el) => {
@@ -260,93 +246,6 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
   }, []);
-
-  // New function to access both cameras simultaneously
-  const enableHybridMode = async () => {
-    try {
-      // Stop existing streams
-      if (videoRef.current?.srcObject) {
-        videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
-      }
-      if (frontStreamRef.current) {
-        frontStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
-      if (backStreamRef.current) {
-        backStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
-
-      // Attempt to get both camera streams
-      const [frontStream, backStream] = await Promise.all([
-        navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-          audio: false,
-        }),
-        navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } },
-          audio: false,
-        }),
-      ]);
-
-      frontStreamRef.current = frontStream;
-      backStreamRef.current = backStream;
-
-      // Assign streams to video elements if they exist
-      if (frontVideoRef.current) {
-        frontVideoRef.current.srcObject = frontStream;
-      }
-      if (backVideoRef.current) {
-        backVideoRef.current.srcObject = backStream;
-      }
-
-      // Use front camera for processing (or combine both)
-      if (videoRef.current) {
-        videoRef.current.srcObject = frontStream;
-      }
-
-      setIsHybridMode(true);
-      setIsFrontCamera(true);
-    } catch (error) {
-      console.error("Hybrid mode failed (expected on mobile):", error);
-      alert(
-        "Hybrid mode is not supported on this device/browser. " +
-        "Most mobile devices cannot access both cameras simultaneously. " +
-        "Falling back to single camera mode."
-      );
-      // Fallback to single camera
-      const fallbackStream = await getCameraStream("user");
-      if (videoRef.current) {
-        videoRef.current.srcObject = fallbackStream;
-      }
-      setIsHybridMode(false);
-    }
-  };
-
-  const disableHybridMode = async () => {
-    // Stop both streams
-    if (frontStreamRef.current) {
-      frontStreamRef.current.getTracks().forEach((track) => track.stop());
-      frontStreamRef.current = null;
-    }
-    if (backStreamRef.current) {
-      backStreamRef.current.getTracks().forEach((track) => track.stop());
-      backStreamRef.current = null;
-    }
-
-    // Restore single camera mode
-    const stream = await getCameraStream(isFrontCamera ? "user" : "environment");
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-    }
-    setIsHybridMode(false);
-  };
-
-  const toggleHybridMode = async () => {
-    if (isHybridMode) {
-      await disableHybridMode();
-    } else {
-      await enableHybridMode();
-    }
-  };
 
   const intensityOptions = useMemo(() => {
     const lastWindow = intensitySeries.slice(-maxPoints); // ✅ only last 100
@@ -633,26 +532,6 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
           style={{ objectFit: "cover" }}
         />
 
-        {/* Hybrid Mode Video (Back Camera) - Only visible in hybrid mode */}
-        {isHybridMode && (
-          <video
-            ref={backVideoRef}
-            autoPlay
-            playsInline
-            muted
-            width="100%"
-            height="100%"
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              objectFit: "cover",
-              opacity: 0.5,
-              zIndex: 1,
-            }}
-          />
-        )}
-
         {/* Collapse button — Left */}
         <button
           onClick={() => setIsCamCollapsed((v) => !v)}
@@ -673,10 +552,9 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
           {isCamCollapsed ? "↗" : "↘"}
         </button>
 
-        {/* Switch Camera button — Right */}
+        {/* ✅ Switch Camera button — Right */}
         <button
           onClick={switchCamera}
-          disabled={isHybridMode}
           style={{
             position: "absolute",
             top: 6,
@@ -688,34 +566,10 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
             padding: "2px 6px",
             fontSize: 12,
             cursor: "pointer",
-            opacity: isHybridMode ? 0.5 : 1,
-            cursor: isHybridMode ? "not-allowed" : "pointer",
           }}
           aria-label="Switch Camera"
         >
           <GrPowerReset />
-        </button>
-
-        {/* NEW: Hybrid Mode Toggle Button — Bottom */}
-        <button
-          onClick={toggleHybridMode}
-          style={{
-            position: "absolute",
-            bottom: 6,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: isHybridMode ? "rgba(34, 197, 94, 0.8)" : "rgba(0,0,0,0.5)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            padding: "4px 8px",
-            fontSize: 11,
-            cursor: "pointer",
-            fontWeight: 600,
-          }}
-          aria-label={isHybridMode ? "Disable hybrid mode" : "Enable hybrid mode"}
-        >
-          {isHybridMode ? "🔀 Hybrid" : "📷 Hybrid"}
         </button>
       </div>
 
