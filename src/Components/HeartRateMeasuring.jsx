@@ -20,6 +20,7 @@ import { calculateHRMetrics } from "../Utils/hrUtils";
 import MetricCard from "./dashboard/MetricCard";
 import hrvIcon from "../images/hrv.svg";
 import hr from "../images/hr.svg";
+import './hearRate.css'
 
 const DEFAULT_TARGET_FPS = 30;
 const DEFAULT_MAX_POINTS = 100;
@@ -40,9 +41,39 @@ const HeartRateMeasuring = () => {
   const [isFrontCamera, setIsFrontCamera] = useState(true);
   const [userId, setUserId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const wakeLockRef = useRef(null);
 
   const targetFps = DEFAULT_TARGET_FPS;
   const maxPoints = DEFAULT_MAX_POINTS;
+  
+  // Create brightness overlay on mount
+  useEffect(() => {
+    const div = document.createElement("div");
+    div.className = "brightness-overlay";
+    document.body.appendChild(div);
+  
+    return () => div.remove();
+  }, []);
+
+  // Screen Wake Lock - Keep screen on
+  useEffect(() => {
+    let wakeLock = null;
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLockRef.current = wakeLock;
+        }
+      } catch (err) {
+        console.error('Wake lock error:', err);
+      }
+    };
+    requestWakeLock();
+    return () => {
+      if (wakeLock) wakeLock.release().catch(() => {});
+    };
+  }, []);
+  
   const getCameraStream = async (facingMode) => {
     try {
       return await navigator.mediaDevices.getUserMedia({
@@ -304,6 +335,9 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
   }, [intensitySeries, theme, maxPoints, targetFps]);
   const handleStopMeasuring = useCallback(async () => {
     try {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+      }
       // ✅ Stop frame processing immediately
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
