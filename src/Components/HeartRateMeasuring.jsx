@@ -118,10 +118,15 @@ const HeartRateMeasuring = () => {
   const processFrontFrame = useCallback(() => {
     const video = frontVideoRef.current;
     const canvas = frontCanvasRef.current;
-    if (!video || !canvas || !video.videoWidth) return;
+    if (!video || !canvas) return;
+    
+    // Check if video is ready and has valid dimensions
+    if (!video.videoWidth || !video.videoHeight || video.readyState < 2) {
+      return;
+    }
 
-    const width = video.videoWidth || 640;
-    const height = video.videoHeight || 480;
+    const width = video.videoWidth;
+    const height = video.videoHeight;
 
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     canvas.width = width;
@@ -167,10 +172,15 @@ const HeartRateMeasuring = () => {
   const processBackFrame = useCallback(() => {
     const video = backVideoRef.current;
     const canvas = backCanvasRef.current;
-    if (!video || !canvas || !video.videoWidth) return;
+    if (!video || !canvas) return;
+    
+    // Check if video is ready and has valid dimensions
+    if (!video.videoWidth || !video.videoHeight || video.readyState < 2) {
+      return;
+    }
 
-    const width = video.videoWidth || 640;
-    const height = video.videoHeight || 480;
+    const width = video.videoWidth;
+    const height = video.videoHeight;
 
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     canvas.width = width;
@@ -240,7 +250,7 @@ const HeartRateMeasuring = () => {
     };
   }, [processBackFrame, targetFps]);
 
-  // Initialize both cameras
+  // Initialize both cameras simultaneously
   useEffect(() => {
     let cancelled = false;
     let frontStream = null;
@@ -263,11 +273,36 @@ const HeartRateMeasuring = () => {
       frontStream = frontStreamResult;
       backStream = backStreamResult;
 
+      // Setup front camera
       if (frontStream && frontVideoRef.current) {
         frontVideoRef.current.srcObject = frontStream;
+        await new Promise((resolve) => {
+          if (frontVideoRef.current.readyState >= 2) {
+            resolve();
+          } else {
+            const onLoadedMetadata = () => {
+              frontVideoRef.current.removeEventListener('loadedmetadata', onLoadedMetadata);
+              resolve();
+            };
+            frontVideoRef.current.addEventListener('loadedmetadata', onLoadedMetadata);
+          }
+        });
       }
+
+      // Setup back camera
       if (backStream && backVideoRef.current) {
         backVideoRef.current.srcObject = backStream;
+        await new Promise((resolve) => {
+          if (backVideoRef.current.readyState >= 2) {
+            resolve();
+          } else {
+            const onLoadedMetadata = () => {
+              backVideoRef.current.removeEventListener('loadedmetadata', onLoadedMetadata);
+              resolve();
+            };
+            backVideoRef.current.addEventListener('loadedmetadata', onLoadedMetadata);
+          }
+        });
       }
     })();
 
@@ -411,14 +446,14 @@ const HeartRateMeasuring = () => {
       if (frontStream) frontStream.getTracks().forEach((t) => t.stop());
       if (backStream) backStream.getTracks().forEach((t) => t.stop());
 
-      // Save data safely
-      const frontHR = frontHeartRate !== "--" ? frontHeartRate : null;
-      const backHR = backHeartRate !== "--" ? backHeartRate : null;
+      // Save data safely - use average or best reading
+      const frontHR = frontHeartRate !== "--" ? parseFloat(frontHeartRate) : null;
+      const backHR = backHeartRate !== "--" ? parseFloat(backHeartRate) : null;
       const avgHR = frontHR && backHR 
-        ? ((parseFloat(frontHR) + parseFloat(backHR)) / 2).toFixed(1)
+        ? ((frontHR + backHR) / 2).toFixed(1)
         : frontHR || backHR || "--";
       
-      localStorage.setItem("heartRate", avgHR);
+      localStorage.setItem("heartRate", avgHR.toString());
       localStorage.setItem("hrv", frontHrv !== "--" ? frontHrv : backHrv);
 
       let saved = false;
@@ -500,10 +535,6 @@ const HeartRateMeasuring = () => {
       yaxis: { min: yMin, max: yMax, title: { text: "Intensity" } },
       theme: { mode: theme },
       tooltip: { theme: theme },
-      title: {
-        text: "Front Camera",
-        style: { fontSize: "14px", fontWeight: 600, color: "#111827" },
-      },
     };
   }, [frontIntensitySeries, theme, maxPoints, targetFps]);
 
@@ -555,10 +586,6 @@ const HeartRateMeasuring = () => {
       yaxis: { min: yMin, max: yMax, title: { text: "Intensity" } },
       theme: { mode: theme },
       tooltip: { theme: theme },
-      title: {
-        text: "Back Camera",
-        style: { fontSize: "14px", fontWeight: 600, color: "#111827" },
-      },
     };
   }, [backIntensitySeries, theme, maxPoints, targetFps]);
 
@@ -622,7 +649,7 @@ const HeartRateMeasuring = () => {
               margin: 0,
             }}
           >
-            Both cameras are active. Position your finger over the front camera or face the back camera for measurement.
+            Both cameras are active simultaneously. Position your finger over the front camera or face the back camera for measurement.
           </p>
         </div>
 
