@@ -25,20 +25,40 @@ import './hearRate.css'
 const DEFAULT_TARGET_FPS = 30;
 const DEFAULT_MAX_POINTS = 100;
 const RAW_SIGNAL_WINDOW_SECONDS = 120;
+
 const HeartRateMeasuring = () => {
   const navigate = useNavigate();
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const intervalRef = useRef(null);
-  const hrSeriesRef = useRef([]);
-  const hrvSeriesRef = useRef([]);
   const theme = "light";
-  const [intensitySeries, setIntensitySeries] = useState([]);
-  const [heartRate, setHeartRate] = useState("--");
-  const [hrv, setHrv] = useState("--");
-  const [, setExportData] = useState([]);
-  const [isCamCollapsed, setIsCamCollapsed] = useState(true);
-  const [isFrontCamera, setIsFrontCamera] = useState(true);
+  
+  // Front camera refs and state
+  const frontVideoRef = useRef(null);
+  const frontCanvasRef = useRef(null);
+  const frontIntervalRef = useRef(null);
+  const frontHrSeriesRef = useRef([]);
+  const frontHrvSeriesRef = useRef([]);
+  const frontExportDataRef = useRef([]);
+  
+  // Back camera refs and state
+  const backVideoRef = useRef(null);
+  const backCanvasRef = useRef(null);
+  const backIntervalRef = useRef(null);
+  const backHrSeriesRef = useRef([]);
+  const backHrvSeriesRef = useRef([]);
+  const backExportDataRef = useRef([]);
+  
+  // Front camera state
+  const [frontIntensitySeries, setFrontIntensitySeries] = useState([]);
+  const [frontHeartRate, setFrontHeartRate] = useState("--");
+  const [frontHrv, setFrontHrv] = useState("--");
+  
+  // Back camera state
+  const [backIntensitySeries, setBackIntensitySeries] = useState([]);
+  const [backHeartRate, setBackHeartRate] = useState("--");
+  const [backHrv, setBackHrv] = useState("--");
+  
+  // UI state
+  const [isFrontCamCollapsed, setIsFrontCamCollapsed] = useState(true);
+  const [isBackCamCollapsed, setIsBackCamCollapsed] = useState(true);
   const [userId, setUserId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const wakeLockRef = useRef(null);
@@ -81,17 +101,9 @@ const HeartRateMeasuring = () => {
         audio: false,
       });
     } catch (err) {
-      console.error("Camera access error:", err);
+      console.error(`Camera access error (${facingMode}):`, err);
+      return null;
     }
-  };
-  const switchCamera = async () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
-    }
-    const newMode = isFrontCamera ? "environment" : "user";
-    const stream = await getCameraStream(newMode);
-    if (videoRef.current) videoRef.current.srcObject = stream;
-    setIsFrontCamera(!isFrontCamera);
   };
 
   useEffect(() => {
@@ -102,11 +114,11 @@ const HeartRateMeasuring = () => {
     return () => unsubscribe();
   }, []);
 
-  // Frame processing using the video element from CameraBox
-  const processFrame = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+  // Process frame for front camera
+  const processFrontFrame = useCallback(() => {
+    const video = frontVideoRef.current;
+    const canvas = frontCanvasRef.current;
+    if (!video || !canvas || !video.videoWidth) return;
 
     const width = video.videoWidth || 640;
     const height = video.videoHeight || 480;
@@ -126,43 +138,164 @@ const HeartRateMeasuring = () => {
     }
 
     const avgIntensity = totalIntensity / pixelCount;
-
     const now = Date.now();
 
- 
-setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(2)) }]);
+    setFrontIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(2)) }]);
+    
     const rawLimit = targetFps * RAW_SIGNAL_WINDOW_SECONDS;
-    setExportData((prev) => {
-      const next = [...prev, avgIntensity];
-      const limited = next.length > rawLimit ? next.slice(-rawLimit) : next;
+    frontExportDataRef.current = [...frontExportDataRef.current, avgIntensity];
+    const limited = frontExportDataRef.current.length > rawLimit 
+      ? frontExportDataRef.current.slice(-rawLimit) 
+      : frontExportDataRef.current;
 
-      const result = calculateHRMetrics(
-        limited,
-        targetFps,
-        hrSeriesRef.current,
-        hrvSeriesRef.current
-      );
-      if (result) {
-        setHeartRate(result.heartRate);
-        setHrv(result.hrv);
-        hrSeriesRef.current = result.hrSeries;
-        hrvSeriesRef.current = result.hrvSeries;
+    const result = calculateHRMetrics(
+      limited,
+      targetFps,
+      frontHrSeriesRef.current,
+      frontHrvSeriesRef.current
+    );
+    
+    if (result) {
+      setFrontHeartRate(result.heartRate);
+      setFrontHrv(result.hrv);
+      frontHrSeriesRef.current = result.hrSeries;
+      frontHrvSeriesRef.current = result.hrvSeries;
+    }
+  }, [targetFps]);
+
+  // Process frame for back camera
+  const processBackFrame = useCallback(() => {
+    const video = backVideoRef.current;
+    const canvas = backCanvasRef.current;
+    if (!video || !canvas || !video.videoWidth) return;
+
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    canvas.width = width;
+    canvas.height = height;
+    ctx.drawImage(video, 0, 0, width, height);
+
+    const { data } = ctx.getImageData(0, 0, width, height);
+    let totalIntensity = 0;
+    const pixelCount = width * height;
+    for (let i = 0; i < data.length; i += 4) {
+      const intensity =
+        0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      totalIntensity += intensity;
+    }
+
+    const avgIntensity = totalIntensity / pixelCount;
+    const now = Date.now();
+
+    setBackIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(2)) }]);
+    
+    const rawLimit = targetFps * RAW_SIGNAL_WINDOW_SECONDS;
+    backExportDataRef.current = [...backExportDataRef.current, avgIntensity];
+    const limited = backExportDataRef.current.length > rawLimit 
+      ? backExportDataRef.current.slice(-rawLimit) 
+      : backExportDataRef.current;
+
+    const result = calculateHRMetrics(
+      limited,
+      targetFps,
+      backHrSeriesRef.current,
+      backHrvSeriesRef.current
+    );
+    
+    if (result) {
+      setBackHeartRate(result.heartRate);
+      setBackHrv(result.hrv);
+      backHrSeriesRef.current = result.hrSeries;
+      backHrvSeriesRef.current = result.hrvSeries;
+    }
+  }, [targetFps]);
+
+  // Setup front camera frame processing
+  useEffect(() => {
+    if (frontIntervalRef.current) {
+      clearInterval(frontIntervalRef.current);
+    }
+    frontIntervalRef.current = setInterval(processFrontFrame, 1000 / targetFps);
+    return () => {
+      if (frontIntervalRef.current) {
+        clearInterval(frontIntervalRef.current);
+        frontIntervalRef.current = null;
+      }
+    };
+  }, [processFrontFrame, targetFps]);
+
+  // Setup back camera frame processing
+  useEffect(() => {
+    if (backIntervalRef.current) {
+      clearInterval(backIntervalRef.current);
+    }
+    backIntervalRef.current = setInterval(processBackFrame, 1000 / targetFps);
+    return () => {
+      if (backIntervalRef.current) {
+        clearInterval(backIntervalRef.current);
+        backIntervalRef.current = null;
+      }
+    };
+  }, [processBackFrame, targetFps]);
+
+  // Initialize both cameras
+  useEffect(() => {
+    let cancelled = false;
+    let frontStream = null;
+    let backStream = null;
+
+    (async () => {
+      // Request both cameras concurrently
+      const [frontStreamResult, backStreamResult] = await Promise.all([
+        getCameraStream("user"),
+        getCameraStream("environment"),
+      ]);
+
+      if (cancelled) {
+        // Clean up if component unmounted
+        frontStreamResult?.getTracks().forEach((t) => t.stop());
+        backStreamResult?.getTracks().forEach((t) => t.stop());
+        return;
       }
 
-      return limited;
-    });
-  }, [ targetFps]);
+      frontStream = frontStreamResult;
+      backStream = backStreamResult;
 
-  const saveSessionData = useCallback(async () => {
+      if (frontStream && frontVideoRef.current) {
+        frontVideoRef.current.srcObject = frontStream;
+      }
+      if (backStream && backVideoRef.current) {
+        backVideoRef.current.srcObject = backStream;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (frontIntervalRef.current) {
+        clearInterval(frontIntervalRef.current);
+        frontIntervalRef.current = null;
+      }
+      if (backIntervalRef.current) {
+        clearInterval(backIntervalRef.current);
+        backIntervalRef.current = null;
+      }
+      if (frontStream) frontStream.getTracks().forEach((t) => t.stop());
+      if (backStream) backStream.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  const saveSessionData = useCallback(async (cameraType, hrSeries, hrvSeries) => {
     if (!userId) return false;
 
     const maxSamples = 300;
-    const hrPoints = hrSeriesRef.current.slice(-maxSamples);
+    const hrPoints = hrSeries.slice(-maxSamples);
     if (hrPoints.length < 100) {
       return false;
     }
 
-    const hrvPoints = hrvSeriesRef.current.slice(-maxSamples);
+    const hrvPoints = hrvSeries.slice(-maxSamples);
     const hrvOffset = Math.max(0, hrvPoints.length - hrPoints.length);
 
     const samples = hrPoints.map((hrPoint, index) => {
@@ -203,6 +336,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
     const sessionRef = doc(sessionsRef);
     const payload = {
       sessionId: sessionRef.id,
+      cameraType, // "front" or "back"
       createdAt: serverTimestamp(),
       clientCreatedAt: Date.now(),
       firstTimestamp,
@@ -219,78 +353,116 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
   }, [userId]);
 
   const resetMeasurementState = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    // Stop intervals
+    if (frontIntervalRef.current) {
+      clearInterval(frontIntervalRef.current);
+      frontIntervalRef.current = null;
     }
-    const stream = videoRef.current?.srcObject;
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
+    if (backIntervalRef.current) {
+      clearInterval(backIntervalRef.current);
+      backIntervalRef.current = null;
     }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    videoRef.current = null;
-    canvasRef.current = null;
-    hrSeriesRef.current = [];
-    hrvSeriesRef.current = [];
-    setExportData([]);
-    setIntensitySeries([]);
-    setHeartRate("--");
-    setHrv("--");
-  }, [setExportData, setHeartRate, setHrv, setIntensitySeries]);
 
-  const handleVideoReady = useCallback((el) => {
-    if (!el) return;
-    videoRef.current = el;
-  }, []);
-  useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-    intervalRef.current = setInterval(processFrame, 1000 / targetFps);
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [processFrame, targetFps]);
+    // Stop video streams
+    const frontStream = frontVideoRef.current?.srcObject;
+    const backStream = backVideoRef.current?.srcObject;
+    if (frontStream) frontStream.getTracks().forEach((track) => track.stop());
+    if (backStream) backStream.getTracks().forEach((track) => track.stop());
 
-  useEffect(() => {
-    let cancelled = false;
+    // Clear refs
+    if (frontVideoRef.current) frontVideoRef.current.srcObject = null;
+    if (backVideoRef.current) backVideoRef.current.srcObject = null;
 
-    (async () => {
-      const stream = await getCameraStream("user");
-      if (!cancelled && videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    })();
+    // Reset state
+    frontHrSeriesRef.current = [];
+    frontHrvSeriesRef.current = [];
+    frontExportDataRef.current = [];
+    backHrSeriesRef.current = [];
+    backHrvSeriesRef.current = [];
+    backExportDataRef.current = [];
 
-    return () => {
-      cancelled = true;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      const stream = videoRef.current?.srcObject;
-      if (stream) stream.getTracks().forEach((t) => t.stop());
-    };
+    setFrontIntensitySeries([]);
+    setFrontHeartRate("--");
+    setFrontHrv("--");
+    setBackIntensitySeries([]);
+    setBackHeartRate("--");
+    setBackHrv("--");
   }, []);
 
-  const intensityOptions = useMemo(() => {
-    const lastWindow = intensitySeries.slice(-maxPoints); // ✅ only last 100
+  const handleStopMeasuring = useCallback(async () => {
+    try {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+      }
 
-    let yMin = 0,
-      yMax = 255;
+      // Stop frame processing immediately
+      if (frontIntervalRef.current) {
+        clearInterval(frontIntervalRef.current);
+        frontIntervalRef.current = null;
+      }
+      if (backIntervalRef.current) {
+        clearInterval(backIntervalRef.current);
+        backIntervalRef.current = null;
+      }
+
+      // Stop video tracks
+      const frontStream = frontVideoRef.current?.srcObject;
+      const backStream = backVideoRef.current?.srcObject;
+      if (frontStream) frontStream.getTracks().forEach((t) => t.stop());
+      if (backStream) backStream.getTracks().forEach((t) => t.stop());
+
+      // Save data safely
+      const frontHR = frontHeartRate !== "--" ? frontHeartRate : null;
+      const backHR = backHeartRate !== "--" ? backHeartRate : null;
+      const avgHR = frontHR && backHR 
+        ? ((parseFloat(frontHR) + parseFloat(backHR)) / 2).toFixed(1)
+        : frontHR || backHR || "--";
+      
+      localStorage.setItem("heartRate", avgHR);
+      localStorage.setItem("hrv", frontHrv !== "--" ? frontHrv : backHrv);
+
+      let saved = false;
+      if (userId) {
+        try {
+          setIsSaving(true);
+          // Save both sessions
+          const [frontSaved, backSaved] = await Promise.all([
+            saveSessionData("front", frontHrSeriesRef.current, frontHrvSeriesRef.current),
+            saveSessionData("back", backHrSeriesRef.current, backHrvSeriesRef.current),
+          ]);
+          saved = frontSaved || backSaved;
+        } catch (error) {
+          console.error("Failed to save session:", error);
+        } finally {
+          setIsSaving(false);
+        }
+      }
+
+      // Reset state AFTER saving and stopping cameras
+      resetMeasurementState();
+
+      // Give the browser a short delay before navigating
+      setTimeout(() => {
+        navigate("/dashboard", {
+          state: saved ? { sessionSaved: true } : undefined,
+        });
+      }, 300);
+    } catch (err) {
+      console.error("Error while stopping measurement:", err);
+    }
+  }, [frontHeartRate, backHeartRate, frontHrv, backHrv, navigate, resetMeasurementState, saveSessionData, userId]);
+
+  // Front camera intensity chart options
+  const frontIntensityOptions = useMemo(() => {
+    const lastWindow = frontIntensitySeries.slice(-maxPoints);
+    let yMin = 0, yMax = 255;
     if (lastWindow.length > 0) {
       const values = lastWindow.map((p) => p.y);
-      const min = Math.min(...values),
-        max = Math.max(...values);
+      const min = Math.min(...values), max = Math.max(...values);
       yMin = Math.max(min - 1, 0);
       yMax = Math.min(max + 1, 255);
     }
-    const baseColor = theme === "dark" ? "#10b981" : "#14b8a6";
+    const baseColor = "#3b82f6"; // Blue for front camera
     return {
       chart: {
         type: "area",
@@ -323,60 +495,72 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
         type: "datetime",
         labels: { style: { colors: theme === "dark" ? "#e5e5e5" : "#111" } },
         title: { text: "Time" },
-        // Show only the last `maxPoints` on the X-axis.
-        // `1000 / targetFps` = time (ms) per frame,
-        // so `maxPoints * (1000 / targetFps)` = total visible time window in ms.
         range: maxPoints * (1000 / targetFps),
       },
       yaxis: { min: yMin, max: yMax, title: { text: "Intensity" } },
       theme: { mode: theme },
       tooltip: { theme: theme },
+      title: {
+        text: "Front Camera",
+        style: { fontSize: "14px", fontWeight: 600, color: "#111827" },
+      },
     };
-  }, [intensitySeries, theme, maxPoints, targetFps]);
-  const handleStopMeasuring = useCallback(async () => {
-    try {
-      if (wakeLockRef.current) {
-        await wakeLockRef.current.release();
-      }
-      // ✅ Stop frame processing immediately
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+  }, [frontIntensitySeries, theme, maxPoints, targetFps]);
 
-      // ✅ Stop video tracks
-      const stream = videoRef.current?.srcObject;
-      if (stream) stream.getTracks().forEach((t) => t.stop());
-
-      // Save data safely
-      localStorage.setItem("heartRate", heartRate);
-      localStorage.setItem("hrv", hrv);
-
-      let saved = false;
-      if (userId) {
-        try {
-          setIsSaving(true);
-          saved = await saveSessionData(); // Wait until saved
-        } catch (error) {
-          console.error("Failed to save session:", error);
-        } finally {
-          setIsSaving(false);
-        }
-      }
-
-      // ✅ Reset state AFTER saving and stopping camera
-      resetMeasurementState();
-
-      // ✅ Give the browser a short delay before navigating (ensures React unmounts properly)
-      setTimeout(() => {
-        navigate("/dashboard", {
-          state: saved ? { sessionSaved: true } : undefined,
-        });
-      }, 300);
-    } catch (err) {
-      console.error("Error while stopping measurement:", err);
+  // Back camera intensity chart options
+  const backIntensityOptions = useMemo(() => {
+    const lastWindow = backIntensitySeries.slice(-maxPoints);
+    let yMin = 0, yMax = 255;
+    if (lastWindow.length > 0) {
+      const values = lastWindow.map((p) => p.y);
+      const min = Math.min(...values), max = Math.max(...values);
+      yMin = Math.max(min - 1, 0);
+      yMax = Math.min(max + 1, 255);
     }
-  }, [heartRate, hrv, navigate, resetMeasurementState, saveSessionData, userId]);
+    const baseColor = "#10b981"; // Green for back camera
+    return {
+      chart: {
+        type: "area",
+        animations: { enabled: false },
+        toolbar: { show: false },
+        zoom: { enabled: false },
+      },
+      stroke: {
+        curve: "smooth",
+        width: 2,
+        colors: [baseColor],
+      },
+      grid: { borderColor: theme === "dark" ? "#333" : "#ddd" },
+      dataLabels: { enabled: false },
+      fill: {
+        type: "gradient",
+        colors: [baseColor],
+        gradient: {
+          shade: "light",
+          type: "vertical",
+          shadeIntensity: 0.5,
+          inverseColors: false,
+          gradientToColors: [baseColor],
+          opacityFrom: 0.5,
+          opacityTo: 0.35,
+          stops: [0, 35, 70, 100],
+        },
+      },
+      xaxis: {
+        type: "datetime",
+        labels: { style: { colors: theme === "dark" ? "#e5e5e5" : "#111" } },
+        title: { text: "Time" },
+        range: maxPoints * (1000 / targetFps),
+      },
+      yaxis: { min: yMin, max: yMax, title: { text: "Intensity" } },
+      theme: { mode: theme },
+      tooltip: { theme: theme },
+      title: {
+        text: "Back Camera",
+        style: { fontSize: "14px", fontWeight: 600, color: "#111827" },
+      },
+    };
+  }, [backIntensitySeries, theme, maxPoints, targetFps]);
 
   return (
     <div className="min-h-screen" style={{ background: "#ffffff" }}>
@@ -410,9 +594,9 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
             margin: 0,
           }}
         >
-          Heart Rate Measuring
+          Dual Camera HR Monitor
         </h1>
-        <div style={{ width: 36 }} /> {/* Spacer for centering */}
+        <div style={{ width: 36 }} />
       </div>
 
       <div
@@ -438,51 +622,61 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
               margin: 0,
             }}
           >
-            Hold your hand steady and apply light pressure with your finger.
+            Both cameras are active. Position your finger over the front camera or face the back camera for measurement.
           </p>
         </div>
 
-        {/* Scrollable Graphs */}
-        <div className="space-y-6 mb-6">
-          {/* Metric Cards */}
-          <div className="grid grid-cols-2 gap-3 -mt-6 mb-4 relative z-10 mt-3">
+        {/* Front Camera Section */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div style={{ width: 4, height: 20, background: "#3b82f6", borderRadius: 2 }} />
+            <h2
+              style={{
+                fontFamily: "Inter, sans-serif",
+                fontWeight: 600,
+                fontSize: 16,
+                color: "#111827",
+                margin: 0,
+              }}
+            >
+              Front Camera
+            </h2>
+          </div>
+          
+          {/* Front Camera Metrics */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
             <MetricCard
-              icon={<img src={hr} alt="Heart Pulse" className="w-6 h-6"  style={{width: "54px", height: "51px"}}/>}
+              icon={<img src={hr} alt="Heart Rate" className="w-6 h-6" style={{width: "54px", height: "51px"}}/>}
               title="HR"
-              value={heartRate || "--"}
+              value={frontHeartRate || "--"}
               unit="bpm"
-           showReset={false}
+              showReset={false}
             />
-            <MetricCard icon={<img src={hrvIcon} alt="Heart Pulse" className="w-6 h-6"  style={{width: "54px", height: "51px"}}/>} title="HRV" value={hrv || "--"} unit="ms" showReset={false} />
+            <MetricCard
+              icon={<img src={hrvIcon} alt="HRV" className="w-6 h-6" style={{width: "54px", height: "51px"}}/>}
+              title="HRV"
+              value={frontHrv || "--"}
+              unit="ms"
+              showReset={false}
+            />
           </div>
 
-          {/* Graph 3: Intensity */}
+          {/* Front Camera Graph */}
           <div
-            className="rounded-xl p-4"
+            className="rounded-xl p-4 mb-4"
             style={{
               background: "#ffffff",
               border: "1px solid #e5e7eb",
               boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
             }}
           >
-            <h3
-              style={{
-                fontFamily: "Inter, sans-serif",
-                fontWeight: 600,
-                fontSize: 16,
-                color: "#111827",
-                margin: "0 0 16px 0",
-              }}
-            >
-              Intensity Signal
-            </h3>
-            <div style={{ height: 250 }}>
-              {intensitySeries.length === 0 ? (
+            <div style={{ height: 200 }}>
+              {frontIntensitySeries.length === 0 ? (
                 <div
                   style={{
-                    height: 280,
+                    height: 200,
                     borderRadius: 8,
-                    background: "light" ? "#1f2937" : "#f3f4f6",
+                    background: "#f3f4f6",
                     position: "relative",
                     overflow: "hidden",
                   }}
@@ -491,9 +685,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
                     style={{
                       position: "absolute",
                       inset: 0,
-                      background: `linear-gradient(90deg, transparent, ${
-                        "light" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"
-                      }, transparent)`,
+                      background: `linear-gradient(90deg, transparent, rgba(0,0,0,0.06), transparent)`,
                       transform: "translateX(-100%)",
                       animation: "shimmer 1.5s infinite",
                     }}
@@ -501,10 +693,87 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
                 </div>
               ) : (
                 <ReactApexChart
-                  options={intensityOptions}
-                  series={[{ name: "Intensity", data: intensitySeries }]}
+                  options={frontIntensityOptions}
+                  series={[{ name: "Intensity", data: frontIntensitySeries }]}
                   type="area"
-                  height={300}
+                  height={200}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Back Camera Section */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div style={{ width: 4, height: 20, background: "#10b981", borderRadius: 2 }} />
+            <h2
+              style={{
+                fontFamily: "Inter, sans-serif",
+                fontWeight: 600,
+                fontSize: 16,
+                color: "#111827",
+                margin: 0,
+              }}
+            >
+              Back Camera
+            </h2>
+          </div>
+          
+          {/* Back Camera Metrics */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <MetricCard
+              icon={<img src={hr} alt="Heart Rate" className="w-6 h-6" style={{width: "54px", height: "51px"}}/>}
+              title="HR"
+              value={backHeartRate || "--"}
+              unit="bpm"
+              showReset={false}
+            />
+            <MetricCard
+              icon={<img src={hrvIcon} alt="HRV" className="w-6 h-6" style={{width: "54px", height: "51px"}}/>}
+              title="HRV"
+              value={backHrv || "--"}
+              unit="ms"
+              showReset={false}
+            />
+          </div>
+
+          {/* Back Camera Graph */}
+          <div
+            className="rounded-xl p-4 mb-4"
+            style={{
+              background: "#ffffff",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            }}
+          >
+            <div style={{ height: 200 }}>
+              {backIntensitySeries.length === 0 ? (
+                <div
+                  style={{
+                    height: 200,
+                    borderRadius: 8,
+                    background: "#f3f4f6",
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: `linear-gradient(90deg, transparent, rgba(0,0,0,0.06), transparent)`,
+                      transform: "translateX(-100%)",
+                      animation: "shimmer 1.5s infinite",
+                    }}
+                  />
+                </div>
+              ) : (
+                <ReactApexChart
+                  options={backIntensityOptions}
+                  series={[{ name: "Intensity", data: backIntensitySeries }]}
+                  type="area"
+                  height={200}
                 />
               )}
             </div>
@@ -534,30 +803,28 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
         </PrimaryButton>
       </div>
 
-      {/* Floating Camera */}
-      {/* <CameraBox onVideoReady={handleVideoReady} /> */}
-      {/* Sticky Camera Preview */}
+      {/* Front Camera Preview */}
       <div
-        className={`sticky-camera ${isCamCollapsed ? "collapsed" : ""}`}
+        className={`sticky-camera ${isFrontCamCollapsed ? "collapsed" : ""}`}
         style={{
-          width: isCamCollapsed ? 96 : 160,
-          height: isCamCollapsed ? 96 : 160,
+          width: isFrontCamCollapsed ? 80 : 140,
+          height: isFrontCamCollapsed ? 80 : 140,
           position: "fixed",
           top: 16,
           right: 16,
           borderRadius: "12px",
           overflow: "hidden",
-          border: `3px solid ${"light" ? "#22d3ee" : "#3b82f6"}`,
+          border: "3px solid #3b82f6",
           boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
           zIndex: 40,
-          background: "light" ? "#0b1220" : "#fff",
+          background: "#fff",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
         <video
-          ref={handleVideoReady}
+          ref={frontVideoRef}
           autoPlay
           playsInline
           muted
@@ -565,49 +832,110 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
           height="100%"
           style={{ objectFit: "cover" }}
         />
-
-        {/* Collapse button — Left */}
         <button
-          onClick={() => setIsCamCollapsed((v) => !v)}
+          onClick={() => setIsFrontCamCollapsed((v) => !v)}
           style={{
             position: "absolute",
-            top: 6,
-            left: 6,
+            top: 4,
+            left: 4,
             background: "rgba(0,0,0,0.5)",
             color: "#fff",
             border: "none",
             borderRadius: 6,
             padding: "2px 6px",
-            fontSize: 12,
+            fontSize: 10,
             cursor: "pointer",
           }}
-          aria-label={isCamCollapsed ? "Expand camera" : "Collapse camera"}
+          aria-label={isFrontCamCollapsed ? "Expand front camera" : "Collapse front camera"}
         >
-          {isCamCollapsed ? "↗" : "↘"}
+          {isFrontCamCollapsed ? "↗" : "↘"}
         </button>
-
-        {/* ✅ Switch Camera button — Right */}
-        <button
-          onClick={switchCamera}
+        <div
           style={{
             position: "absolute",
-            top: 6,
-            right: 6,
-            background: "rgba(0,0,0,0.5)",
+            bottom: 4,
+            left: 4,
+            right: 4,
+            background: "rgba(59, 130, 246, 0.8)",
             color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            padding: "2px 6px",
-            fontSize: 12,
-            cursor: "pointer",
+            fontSize: 10,
+            padding: "2px 4px",
+            borderRadius: 4,
+            textAlign: "center",
           }}
-          aria-label="Switch Camera"
         >
-          <GrPowerReset />
-        </button>
+          Front
+        </div>
       </div>
 
-      <canvas ref={canvasRef} style={{ display: "none" }} />
+      {/* Back Camera Preview */}
+      <div
+        className={`sticky-camera ${isBackCamCollapsed ? "collapsed" : ""}`}
+        style={{
+          width: isBackCamCollapsed ? 80 : 140,
+          height: isBackCamCollapsed ? 80 : 140,
+          position: "fixed",
+          top: isFrontCamCollapsed ? 108 : 168,
+          right: 16,
+          borderRadius: "12px",
+          overflow: "hidden",
+          border: "3px solid #10b981",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          zIndex: 39,
+          background: "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <video
+          ref={backVideoRef}
+          autoPlay
+          playsInline
+          muted
+          width="100%"
+          height="100%"
+          style={{ objectFit: "cover" }}
+        />
+        <button
+          onClick={() => setIsBackCamCollapsed((v) => !v)}
+          style={{
+            position: "absolute",
+            top: 4,
+            left: 4,
+            background: "rgba(0,0,0,0.5)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            padding: "2px 6px",
+            fontSize: 10,
+            cursor: "pointer",
+          }}
+          aria-label={isBackCamCollapsed ? "Expand back camera" : "Collapse back camera"}
+        >
+          {isBackCamCollapsed ? "↗" : "↘"}
+        </button>
+        <div
+          style={{
+            position: "absolute",
+            bottom: 4,
+            left: 4,
+            right: 4,
+            background: "rgba(16, 185, 129, 0.8)",
+            color: "#fff",
+            fontSize: 10,
+            padding: "2px 4px",
+            borderRadius: 4,
+            textAlign: "center",
+          }}
+        >
+          Back
+        </div>
+      </div>
+
+      {/* Hidden canvases for processing */}
+      <canvas ref={frontCanvasRef} style={{ display: "none" }} />
+      <canvas ref={backCanvasRef} style={{ display: "none" }} />
     </div>
   );
 };
