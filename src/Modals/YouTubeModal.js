@@ -26,14 +26,16 @@ const YouTubeModal = ({
       footer={null}
       centered
       width={600}
-      destroyOnClose
-      bodyStyle={{
-        padding: 0,
-        margin: 0,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        background: "#000",
+      destroyOnHidden={false}
+      styles={{
+        body: {
+          padding: 0,
+          margin: 0,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          background: "#000",
+        },
       }}
     >
       <div style={{ width: "100%", position: "relative" }}>

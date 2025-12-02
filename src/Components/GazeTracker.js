@@ -6,6 +6,8 @@ import YouTubeModal from "../Modals/YouTubeModal";
 import SampleVideo from "../Video/Eyetracking.mp4";
 import { Button } from "antd";
 import extractYouTubeId from "../utils/extractYoutubeID";
+import { detectSaccade, calculateSaccadeFrequency, calculateAverageVelocity, getRecentSaccades } from "../utils/saccadeDetection";
+import SaccadeMetrics from "./SaccadeMetrics";
 
 const SMOOTHING_ALPHA = 0.25;
 const AUTO_SCALE_POINTS = 1000; // Number of recent points to use for auto-scaling
@@ -23,6 +25,7 @@ export default function GazeTracker() {
   const [gaze, setGaze] = useState({ x: null, y: null });
   const [samples, setSamples] = useState([]);
   const [pupilSamples, setPupilSamples] = useState([]); // 👁️ pupil dilation graph data
+  const [saccades, setSaccades] = useState([]); // 👁️ saccade events
   const [duration, setDuration] = useState(Infinity);
   const [isTracking, setIsTracking] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
@@ -32,6 +35,8 @@ export default function GazeTracker() {
   const [openYouTube, setOpenYouTube] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [youtubeId, setYoutubeId] = useState("");
+  
+  const lastGazeWithTimestampRef = useRef(null); // Store previous gaze with timestamp for saccade detection
 
   useEffect(() => {
     const getStream = async () => {
@@ -226,6 +231,35 @@ export default function GazeTracker() {
       lastGazeRef.current = smoothed;
       setGaze(smoothed);
       setSamples((prev) => prev.concat({ x: smoothed.x, y: smoothed.y }));
+
+      // 👁️ Saccade detection
+      const now = performance.now();
+      if (lastGazeWithTimestampRef.current) {
+        const saccade = detectSaccade(
+          {
+            x: lastGazeWithTimestampRef.current.x,
+            y: lastGazeWithTimestampRef.current.y,
+            timestamp: lastGazeWithTimestampRef.current.timestamp,
+          },
+          {
+            x: smoothed.x,
+            y: smoothed.y,
+            timestamp: now,
+          }
+        );
+
+        if (saccade) {
+          setSaccades((prev) => [...prev, saccade]);
+    console.log("saccade", saccade);
+        }
+      }
+
+      // Update last gaze with timestamp
+      lastGazeWithTimestampRef.current = {
+        x: smoothed.x,
+        y: smoothed.y,
+        timestamp: now,
+      };
     }
 
     ctx.restore();
@@ -247,8 +281,10 @@ export default function GazeTracker() {
     // Reset state
     setSamples([]);
     setPupilSamples([]);
+    setSaccades([]);
     setGaze({ x: null, y: null });
     lastGazeRef.current = { x: null, y: null };
+    lastGazeWithTimestampRef.current = null;
     lastPupilRef.current = null;
     stoppedRef.current = false;
 
@@ -351,7 +387,7 @@ export default function GazeTracker() {
     }
   };
 
-  // Build exportable dataset: align gaze samples with pupil dilation (by index)
+  // Build exportable dataset: align gaze samples with pupil dilation and saccades
   const buildExportRows = () => {
     const len =
       Math.min(samples.length, pupilSamples.length || 0) || samples.length;
@@ -364,10 +400,34 @@ export default function GazeTracker() {
     return rows;
   };
 
+  // Build saccade export data
+  const buildSaccadeExportData = () => {
+    return saccades.map((saccade) => ({
+      timestamp: saccade.timestamp,
+      velocity: saccade.velocity,
+      distance: saccade.distance,
+      duration: saccade.duration,
+      startPoint: saccade.startPoint,
+      endPoint: saccade.endPoint,
+    }));
+  };
+
   const handleExportJSON = () => {
     const rows = buildExportRows();
-    if (!rows.length) return;
-    const blob = new Blob([JSON.stringify(rows, null, 2)], {
+    const saccadeData = buildSaccadeExportData();
+    const exportData = {
+      gazeData: rows,
+      saccades: saccadeData,
+      metadata: {
+        totalSamples: rows.length,
+        totalSaccades: saccades.length,
+        averageSaccadeVelocity: averageSaccadeVelocity,
+        saccadeFrequency: saccadeFrequency,
+        exportTimestamp: new Date().toISOString(),
+      },
+    };
+    if (!rows.length && !saccadeData.length) return;
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
@@ -382,12 +442,35 @@ export default function GazeTracker() {
 
   const handleExportCSV = () => {
     const rows = buildExportRows();
-    if (!rows.length) return;
+    const saccadeData = buildSaccadeExportData();
+    if (!rows.length && !saccadeData.length) return;
+    
+    // Gaze data CSV
     const header = ["x", "y", "pupilDilation"];
     const lines = [header.join(",")];
     for (const r of rows) {
       lines.push([r.x, r.y, r.pupilDilation].join(","));
     }
+    
+    // Add saccade data section
+    if (saccadeData.length > 0) {
+      lines.push(""); // Empty line separator
+      lines.push("Saccades");
+      lines.push(["timestamp", "velocity", "distance", "duration", "startX", "startY", "endX", "endY"].join(","));
+      for (const s of saccadeData) {
+        lines.push([
+          s.timestamp,
+          s.velocity,
+          s.distance,
+          s.duration,
+          s.startPoint.x,
+          s.startPoint.y,
+          s.endPoint.x,
+          s.endPoint.y,
+        ].join(","));
+      }
+    }
+    
     const blob = new Blob([lines.join("\n")], {
       type: "text/csv;charset=utf-8;",
     });
@@ -400,6 +483,19 @@ export default function GazeTracker() {
     a.remove();
     URL.revokeObjectURL(url);
   };
+
+  // Calculate saccade metrics
+  const saccadeFrequency = useMemo(() => {
+    return calculateSaccadeFrequency(saccades, 1000); // per second
+  }, [saccades]);
+
+  const averageSaccadeVelocity = useMemo(() => {
+    return calculateAverageVelocity(saccades);
+  }, [saccades]);
+
+  const recentSaccadesList = useMemo(() => {
+    return getRecentSaccades(saccades, 5000); // last 5 seconds
+  }, [saccades]);
 
   // Auto-scale x and y axes based on recent data points
   const { xMin, xMax, yMin, yMax } = useMemo(() => {
@@ -436,7 +532,7 @@ export default function GazeTracker() {
       yMin: Math.max(yMinVal - 100, 0),
       yMax: Math.min(yMaxVal + 100, window.innerHeight),
     };
-  }, [samples]);
+  }, [samples,replaying]);
 
   const handleReplay = () => {
     if (samples.length === 0) return;
@@ -843,6 +939,15 @@ export default function GazeTracker() {
               </button>
             </div>
           </div>
+
+          {/* Saccade Metrics */}
+          <SaccadeMetrics
+            saccadeCount={saccades.length}
+            saccadeFrequency={saccadeFrequency}
+            averageVelocity={averageSaccadeVelocity}
+            recentSaccades={recentSaccadesList}
+            isTracking={isTracking}
+          />
         </div>
 
         {/* Right: Charts (2/3 width on desktop, full width on mobile) */}

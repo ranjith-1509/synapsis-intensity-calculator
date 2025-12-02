@@ -42,14 +42,16 @@ const VideoModal = ({
       footer={null}
       centered
       width={600}
-      destroyOnClose={true} // ✅ Keep it mounted
-      bodyStyle={{
-        padding: 0,
-        margin: 0,
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        background: "#000",
+      destroyOnHidden={false}
+      styles={{
+        body: {
+          padding: 0,
+          margin: 0,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          background: "#000",
+        },
       }}
     >
       <video
