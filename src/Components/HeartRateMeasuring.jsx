@@ -40,6 +40,7 @@ const HeartRateMeasuring = () => {
   const [isFrontCamera, setIsFrontCamera] = useState(true);
   const [userId, setUserId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isNavbarGreen, setIsNavbarGreen] = useState(true);
 
   const targetFps = DEFAULT_TARGET_FPS;
   const maxPoints = DEFAULT_MAX_POINTS;
@@ -247,6 +248,17 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
     };
   }, []);
 
+  // Blinking navbar background effect - toggle between green and white rapidly
+  useEffect(() => {
+    const blinkInterval = setInterval(() => {
+      setIsNavbarGreen((prev) => !prev);
+    }, 800); // 500ms for rapid blinking
+
+    return () => {
+      clearInterval(blinkInterval);
+    };
+  }, []);
+
   const intensityOptions = useMemo(() => {
     const lastWindow = intensitySeries.slice(-maxPoints); // ✅ only last 100
 
@@ -348,8 +360,12 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
     <div className="min-h-screen" style={{ background: "#ffffff" }}>
       {/* Top Navigation */}
       <div
-        className="flex items-center gap-4 px-4 py-3"
-        style={{ borderBottom: "1px solid #e5e7eb" }}
+        className="flex items-center gap-4 px-4 py-3 h-24"
+        style={{
+          borderBottom: "1px solid #e5e7eb",
+          background: isNavbarGreen ? "#00ff00" : "#ffffff",
+          transition: "background-color 0.2s ease-in-out",
+        }}
       >
         <button
           onClick={handleStopMeasuring}
@@ -372,7 +388,8 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
             fontFamily: "Inter, sans-serif",
             fontWeight: 600,
             fontSize: 18,
-            color: "#111827",
+            color:isNavbarGreen ? "#FFF" : "#111827",
+            transition: "color 0.2s ease-in-out",
             margin: 0,
           }}
         >
