@@ -252,7 +252,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
   useEffect(() => {
     const blinkInterval = setInterval(() => {
       setIsNavbarGreen((prev) => !prev);
-    }, 800); // 500ms for rapid blinking
+    }, 6000); // 500ms for rapid blinking
 
     return () => {
       clearInterval(blinkInterval);
