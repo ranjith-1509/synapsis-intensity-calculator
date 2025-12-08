@@ -4,7 +4,7 @@ import ReactApexChart from "react-apexcharts";
 import VideoModal from "../Modals/VideoModal";
 import YouTubeModal from "../Modals/YouTubeModal";
 import SampleVideo from "../Video/Eyetracking.mp4";
-import { Button } from "antd";
+import { Button, Modal } from "antd";
 import extractYouTubeId from "../utils/extractYoutubeID";
 import { detectSaccade, calculateSaccadeFrequency, calculateAverageVelocity, getRecentSaccades } from "../utils/saccadeDetection";
 import SaccadeMetrics from "./SaccadeMetrics";
@@ -35,6 +35,10 @@ export default function GazeTracker() {
   const [openYouTube, setOpenYouTube] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [youtubeId, setYoutubeId] = useState("");
+  const [openSampleVideos, setOpenSampleVideos] = useState(false);
+  const [sampleVideos, setSampleVideos] = useState([]);
+  const [loadingVideos, setLoadingVideos] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("");
   
   const lastGazeWithTimestampRef = useRef(null); // Store previous gaze with timestamp for saccade detection
 
@@ -553,6 +557,68 @@ export default function GazeTracker() {
     }, 100); // adjust speed (100ms between points)
   };
 
+  // Fetch sample videos from API
+  const fetchSampleVideos = async () => {
+    try {
+      setLoadingVideos(true);
+      setOpenSampleVideos(true);
+
+  const response = await fetch('http://127.0.0.1:8000/labels/sample-videos');
+    
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+
+
+
+      const data = await response.json();
+      console.log(data.asset_list, "data");
+      setSampleVideos(data.asset_list || []);
+    } catch (error) {
+      console.error("Error fetching sample videos:", error);
+      // Show error message to user
+      Modal.error({
+        title: "Error",
+        content: `Failed to fetch sample videos: ${error.message}`,
+      });
+      setSampleVideos([]);
+    } finally {
+      setLoadingVideos(false);
+    }
+
+
+  };
+
+  const fetchPlaybackUrl = async (videoId) => {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/labels/video/${videoId}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const playbackUrl = data?.output?.playback_url;
+      
+      if (playbackUrl) {
+        console.log(playbackUrl, "playbackUrl");
+        setVideoUrl(playbackUrl);
+        setOpenSampleVideos(false); // Close sample videos modal
+        setOpen(true); // Open the video modal
+        setupAndStart(); // Start tracking
+      }
+      
+      console.log(data, "datain video fetch");
+    } catch (error) {
+      console.error("Error fetching video:", error);
+      Modal.error({
+        title: "Error",
+        content: `Failed to fetch video: ${error.message}`,
+      });
+    }
+  };
+
   return (
     <div
       style={{
@@ -632,6 +698,24 @@ export default function GazeTracker() {
             }
           >
             {isInitializing ? "Loading..." : "▶ Play Video"}
+          </Button>
+          <Button
+            type="default"
+            disabled={isInitializing || loadingVideos}
+            onClick={fetchSampleVideos}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "1px solid #e2e8f0",
+              background: loadingVideos ? "#f7fafc" : "white",
+              color: loadingVideos ? "#a0aec0" : "#2d3748",
+              cursor: loadingVideos ? "not-allowed" : "pointer",
+              fontWeight: 600,
+              fontSize: "clamp(12px, 2vw, 14px)",
+              boxShadow: loadingVideos ? "none" : "0 2px 4px rgba(0,0,0,0.05)",
+            }}
+          >
+            {loadingVideos ? "Loading..." : "Get Sample Videos"}
           </Button>
           <input
             type="text"
@@ -1114,9 +1198,12 @@ export default function GazeTracker() {
       </div>
       <VideoModal
         open={open}
-        onClose={() => setOpen(false)}
-        videoSrc={SampleVideo} // 👈 your local file inside public/videos
-        title="Eye Fixation Demo"
+        onClose={() => {
+          setOpen(false);
+          setVideoUrl(""); // Reset video URL when modal closes
+        }}
+        videoSrc={videoUrl || SampleVideo} // Use fetched URL or fallback to sample video
+        title={videoUrl ? "Sample Video" : "Eye Fixation Demo"}
         isInitializing={isInitializing}
         stopTracking={stopTracking}
       />
@@ -1128,6 +1215,94 @@ export default function GazeTracker() {
         onPlayStart={setupAndStart}
         onPauseStop={stopTracking}
       />
+
+      {/* Sample Videos Modal */}
+      <Modal
+        title="Sample Videos"
+        open={openSampleVideos}
+        onCancel={() => {
+          setOpenSampleVideos(false);
+          setSampleVideos([]);
+        }}
+        footer={[
+          <Button key="close" onClick={() => {
+            setOpenSampleVideos(false);
+            setSampleVideos([]);
+          }}>
+            Close
+          </Button>,
+        ]}
+        width={700}
+        centered
+      >
+        {loadingVideos ? (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <p>Loading videos...</p>
+          </div>
+        ) : sampleVideos.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <p>No videos found.</p>
+          </div>
+        ) : (
+          <div
+            style={{
+              maxHeight: "500px",
+              overflowY: "auto",
+              padding: "8px 0",
+            }}
+          >
+            {sampleVideos.map((video, index) => {
+              // Format duration to MM:SS
+              const formatDuration = (seconds) => {
+                if (!seconds) return "N/A";
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins}:${secs.toString().padStart(2, "0")}`;
+              };
+
+              return (
+                <div
+                  key={video.id || index}
+                  style={{
+                    padding: "12px",
+                    marginBottom: "8px",
+                    background: "#f7fafc",
+                    borderRadius: "8px",
+                    border: "1px solid #e2e8f0",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    cursor: "pointer",
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    fetchPlaybackUrl(video.id);
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: "14px",
+                      color: "#2d3748",
+                    }}
+                  >
+                    {video.title || `Video ${index + 1}`}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      color: "#718096",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {formatDuration(video.duration)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
