@@ -87,7 +87,6 @@ const useBlinkDetection = ({ videoRef, isActive = false }) => {
         ) {
           setBlinkCount((prev) => prev + 1);
           lastBlinkTimeRef.current = performance.now();
-          console.log('👁️ Blink detected! Total:', blinkCount + 1);
         }
 
         setIsBlinking(currentlyBlinking);
@@ -135,14 +134,12 @@ const useBlinkDetection = ({ videoRef, isActive = false }) => {
     };
 
     const startRAF = () => {
-      console.log("visibilityState: visible");
       cancelAnimationFrame(animationId);
       clearInterval(intervalId);
       rafLoop();
     };
 
     const startInterval = () => {
-      console.log("visibilityState: hidden");
       cancelAnimationFrame(animationId);
       clearInterval(intervalId);
       intervalId = setInterval(() => {

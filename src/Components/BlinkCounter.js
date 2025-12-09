@@ -1,9 +1,6 @@
 import React from 'react';
 
 const BlinkCounter = ({ blinkCount, isBlinking, isInitialized }) => {
-    console.log(isBlinking,"isBlinking");
-    console.log(blinkCount,"blinkCount");
-    console.log(isInitialized,"isInitialized");
   return (
     <div style={{
       background: '#2d3748',

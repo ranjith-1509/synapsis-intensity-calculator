@@ -6,7 +6,12 @@ import YouTubeModal from "../Modals/YouTubeModal";
 import SampleVideo from "../Video/Eyetracking.mp4";
 import { Button, Modal } from "antd";
 import extractYouTubeId from "../utils/extractYoutubeID";
-import { detectSaccade, calculateSaccadeFrequency, calculateAverageVelocity, getRecentSaccades } from "../utils/saccadeDetection";
+import {
+  detectSaccade,
+  calculateSaccadeFrequency,
+  calculateAverageVelocity,
+  getRecentSaccades,
+} from "../utils/saccadeDetection";
 import SaccadeMetrics from "./SaccadeMetrics";
 
 const SMOOTHING_ALPHA = 0.25;
@@ -37,9 +42,9 @@ export default function GazeTracker() {
   const [youtubeId, setYoutubeId] = useState("");
   const [openSampleVideos, setOpenSampleVideos] = useState(false);
   const [sampleVideos, setSampleVideos] = useState([]);
-  const [loadingVideos, setLoadingVideos] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
-  
+
   const lastGazeWithTimestampRef = useRef(null); // Store previous gaze with timestamp for saccade detection
 
   useEffect(() => {
@@ -53,12 +58,42 @@ export default function GazeTracker() {
     getStream();
   }, [isTracking]);
 
+  // Fetch sample videos from API
+  const fetchSampleVideos = async () => {
+    console.log("fetching sample videos");
+    try {
+      setLoading(true);
+      // const playlistId = "ee708add-908d-4fc4-b62b-2ad2f5732094";
+      const playlistId = "f8b4cd3c-8bfa-46d2-9fcc-92a5760264e2";
+      const response = await fetch(
+        `https://dev-eye-scan-api.synapsismedical.com/gumlet/playlists/${playlistId}/videos`
+      );
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log(data, "data");
+      setSampleVideos(data || []);
+    } catch (error) {
+      console.error("Error fetching sample videos:", error);
+      // Show error message to user
+      Modal.error({
+        title: "Error",
+        content: `Failed to fetch sample videos: ${error.message}`,
+      });
+      setSampleVideos([]);
+    } finally {
+      setLoading(false);
+    }
+  };
   // Handle window resize for responsive layout
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
     };
     window.addEventListener("resize", handleResize);
+    fetchSampleVideos();
     return () => window.removeEventListener("resize", handleResize);
   }, []);
   // -------------------------------------------Eye fixation calculation-------------------------------------------
@@ -254,7 +289,7 @@ export default function GazeTracker() {
 
         if (saccade) {
           setSaccades((prev) => [...prev, saccade]);
-    console.log("saccade", saccade);
+          console.log("saccade", saccade);
         }
       }
 
@@ -448,33 +483,46 @@ export default function GazeTracker() {
     const rows = buildExportRows();
     const saccadeData = buildSaccadeExportData();
     if (!rows.length && !saccadeData.length) return;
-    
+
     // Gaze data CSV
     const header = ["x", "y", "pupilDilation"];
     const lines = [header.join(",")];
     for (const r of rows) {
       lines.push([r.x, r.y, r.pupilDilation].join(","));
     }
-    
+
     // Add saccade data section
     if (saccadeData.length > 0) {
       lines.push(""); // Empty line separator
       lines.push("Saccades");
-      lines.push(["timestamp", "velocity", "distance", "duration", "startX", "startY", "endX", "endY"].join(","));
+      lines.push(
+        [
+          "timestamp",
+          "velocity",
+          "distance",
+          "duration",
+          "startX",
+          "startY",
+          "endX",
+          "endY",
+        ].join(",")
+      );
       for (const s of saccadeData) {
-        lines.push([
-          s.timestamp,
-          s.velocity,
-          s.distance,
-          s.duration,
-          s.startPoint.x,
-          s.startPoint.y,
-          s.endPoint.x,
-          s.endPoint.y,
-        ].join(","));
+        lines.push(
+          [
+            s.timestamp,
+            s.velocity,
+            s.distance,
+            s.duration,
+            s.startPoint.x,
+            s.startPoint.y,
+            s.endPoint.x,
+            s.endPoint.y,
+          ].join(",")
+        );
       }
     }
-    
+
     const blob = new Blob([lines.join("\n")], {
       type: "text/csv;charset=utf-8;",
     });
@@ -536,7 +584,7 @@ export default function GazeTracker() {
       yMin: Math.max(yMinVal - 100, 0),
       yMax: Math.min(yMaxVal + 100, window.innerHeight),
     };
-  }, [samples,replaying]);
+  }, [samples, replaying]);
 
   const handleReplay = () => {
     if (samples.length === 0) return;
@@ -557,59 +605,12 @@ export default function GazeTracker() {
     }, 100); // adjust speed (100ms between points)
   };
 
-  // Fetch sample videos from API
-  const fetchSampleVideos = async () => {
+  const fetchPlaybackUrl = async (playbackUrl) => {
     try {
-      setLoadingVideos(true);
-      setOpenSampleVideos(true);
-
-  const response = await fetch('http://127.0.0.1:8000/labels/sample-videos');
-    
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-
-
-
-
-      const data = await response.json();
-      console.log(data.asset_list, "data");
-      setSampleVideos(data.asset_list || []);
-    } catch (error) {
-      console.error("Error fetching sample videos:", error);
-      // Show error message to user
-      Modal.error({
-        title: "Error",
-        content: `Failed to fetch sample videos: ${error.message}`,
-      });
-      setSampleVideos([]);
-    } finally {
-      setLoadingVideos(false);
-    }
-
-
-  };
-
-  const fetchPlaybackUrl = async (videoId) => {
-    try {
-      const response = await fetch(`http://127.0.0.1:8000/labels/video/${videoId}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const playbackUrl = data?.output?.playback_url;
-      
-      if (playbackUrl) {
-        console.log(playbackUrl, "playbackUrl");
-        setVideoUrl(playbackUrl);
-        setOpenSampleVideos(false); // Close sample videos modal
-        setOpen(true); // Open the video modal
-        setupAndStart(); // Start tracking
-      }
-      
-      console.log(data, "datain video fetch");
+      setVideoUrl(playbackUrl);
+      setOpenSampleVideos(false); // Close sample videos modal
+      setOpen(true); // Open the video modal
+      setupAndStart(); // Start tracking
     } catch (error) {
       console.error("Error fetching video:", error);
       Modal.error({
@@ -701,21 +702,23 @@ export default function GazeTracker() {
           </Button>
           <Button
             type="default"
-            disabled={isInitializing || loadingVideos}
-            onClick={fetchSampleVideos}
+            disabled={isInitializing || loading || sampleVideos.length === 0}
+            onClick={() => {
+              setOpenSampleVideos(true);
+            }}
             style={{
               padding: "8px 16px",
               borderRadius: 8,
               border: "1px solid #e2e8f0",
-              background: loadingVideos ? "#f7fafc" : "white",
-              color: loadingVideos ? "#a0aec0" : "#2d3748",
-              cursor: loadingVideos ? "not-allowed" : "pointer",
+              background: loading ? "#f7fafc" : "white",
+              color: loading ? "#a0aec0" : "#2d3748",
+              cursor: loading ? "not-allowed" : "pointer",
               fontWeight: 600,
               fontSize: "clamp(12px, 2vw, 14px)",
-              boxShadow: loadingVideos ? "none" : "0 2px 4px rgba(0,0,0,0.05)",
+              boxShadow: loading ? "none" : "0 2px 4px rgba(0,0,0,0.05)",
             }}
           >
-            {loadingVideos ? "Loading..." : "Get Sample Videos"}
+            {loading ? "Loading..." : "Get Sample Videos"}
           </Button>
           <input
             type="text"
@@ -1225,17 +1228,20 @@ export default function GazeTracker() {
           setSampleVideos([]);
         }}
         footer={[
-          <Button key="close" onClick={() => {
-            setOpenSampleVideos(false);
-            setSampleVideos([]);
-          }}>
+          <Button
+            key="close"
+            onClick={() => {
+              setOpenSampleVideos(false);
+              setSampleVideos([]);
+            }}
+          >
             Close
           </Button>,
         ]}
         width={700}
         centered
       >
-        {loadingVideos ? (
+        {loading ? (
           <div style={{ textAlign: "center", padding: "40px 0" }}>
             <p>Loading videos...</p>
           </div>
@@ -1270,32 +1276,74 @@ export default function GazeTracker() {
                     borderRadius: "8px",
                     border: "1px solid #e2e8f0",
                     display: "flex",
-                    justifyContent: "space-between",
+                    gap: "12px",
                     alignItems: "center",
                     cursor: "pointer",
+                    transition: "all 0.2s ease",
                   }}
                   onClick={(e) => {
                     e.preventDefault();
-                    fetchPlaybackUrl(video.id);
+                    fetchPlaybackUrl(video.playbackUrl);
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#edf2f7";
+                    e.currentTarget.style.borderColor = "#cbd5e0";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#f7fafc";
+                    e.currentTarget.style.borderColor = "#e2e8f0";
                   }}
                 >
+                  {/* Thumbnail */}
+                  {video.thumbnailUrl && (
+                    <img
+                      src={video.thumbnailUrl}
+                      alt={video.title || `Video ${index + 1}`}
+                      style={{
+                        width: "80px",
+                        height: "60px",
+                        objectFit: "cover",
+                        borderRadius: "6px",
+                        flexShrink: 0,
+                      }}
+                      onError={(e) => {
+                        e.target.style.display = "none";
+                      }}
+                    />
+                  )}
+                  {/* Video Info */}
                   <div
                     style={{
-                      fontWeight: 600,
-                      fontSize: "14px",
-                      color: "#2d3748",
+                      flex: 1,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      minWidth: 0,
                     }}
                   >
-                    {video.title || `Video ${index + 1}`}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      color: "#718096",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {formatDuration(video.duration)}
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "14px",
+                        color: "#2d3748",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {video.title || `Video ${index + 1}`}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        color: "#718096",
+                        fontWeight: 500,
+                        marginLeft: "12px",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {formatDuration(video.duration)}
+                    </div>
                   </div>
                 </div>
               );

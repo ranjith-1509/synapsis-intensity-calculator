@@ -39,8 +39,6 @@ export function detectSaccade(prevGaze, currentGaze) {
 
   const distance = calculateDistance(prevGaze, currentGaze);
   const timeDelta = currentGaze.timestamp - prevGaze.timestamp;
-console.log("timeDelta", timeDelta);
-console.log("distance", distance);
   // Check if movement meets saccade criteria
   if (
     distance >= MIN_SACCADE_DISTANCE &&

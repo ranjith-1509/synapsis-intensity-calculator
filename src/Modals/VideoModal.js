@@ -12,6 +12,7 @@ const VideoModal = ({
   const videoRef = useRef(null);
 
   useEffect(() => {
+    console.log("video modal open", open);
     if (!open && videoRef.current) {
       // stop and reset video when modal closes
       videoRef.current.pause();
