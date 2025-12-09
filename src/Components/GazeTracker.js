@@ -3,7 +3,6 @@ import { FilesetResolver, FaceLandmarker } from "@mediapipe/tasks-vision";
 import ReactApexChart from "react-apexcharts";
 import VideoModal from "../Modals/VideoModal";
 import YouTubeModal from "../Modals/YouTubeModal";
-import SampleVideo from "../Video/Eyetracking.mp4";
 import { Button, Modal } from "antd";
 import extractYouTubeId from "../utils/extractYoutubeID";
 import {
@@ -44,6 +43,7 @@ export default function GazeTracker() {
   const [sampleVideos, setSampleVideos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
+  const [videoId, setVideoId] = useState("");
 
   const lastGazeWithTimestampRef = useRef(null); // Store previous gaze with timestamp for saccade detection
 
@@ -605,9 +605,10 @@ export default function GazeTracker() {
     }, 100); // adjust speed (100ms between points)
   };
 
-  const fetchPlaybackUrl = async (playbackUrl) => {
+  const fetchPlaybackUrl = async (playbackUrl,assetId) => {
     try {
       setVideoUrl(playbackUrl);
+      setVideoId(assetId);
       setOpenSampleVideos(false); // Close sample videos modal
       setOpen(true); // Open the video modal
       setupAndStart(); // Start tracking
@@ -1204,8 +1205,10 @@ export default function GazeTracker() {
         onClose={() => {
           setOpen(false);
           setVideoUrl(""); // Reset video URL when modal closes
+          setVideoId("");
         }}
-        videoSrc={videoUrl || SampleVideo} // Use fetched URL or fallback to sample video
+        videoSrc={videoUrl }
+        videoId={videoId} // Use fetched URL or fallback to sample video
         title={videoUrl ? "Sample Video" : "Eye Fixation Demo"}
         isInitializing={isInitializing}
         stopTracking={stopTracking}
@@ -1283,7 +1286,8 @@ export default function GazeTracker() {
                   }}
                   onClick={(e) => {
                     e.preventDefault();
-                    fetchPlaybackUrl(video.playbackUrl);
+                    fetchPlaybackUrl(video.playbackUrl,video.assetId);
+
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = "#edf2f7";
