@@ -687,25 +687,16 @@ export default function GazeTracker() {
           >
             {isInitializing ? "Loading..." : isTracking ? "Stop" : "Start"}
           </button>
-          <Button
-            type="primary"
-            disabled={isInitializing}
-            onClick={
-              isTracking
-                ? null
-                : () => {
-                    setOpen(true);
-                    setupAndStart();
-                  }
-            }
-          >
-            {isInitializing ? "Loading..." : "▶ Play Video"}
-          </Button>
+  
           <Button
             type="default"
-            disabled={isInitializing || loading || sampleVideos.length === 0}
+            disabled={isInitializing || loading}
             onClick={() => {
               setOpenSampleVideos(true);
+              // Fetch videos if not already loaded
+              if (sampleVideos.length === 0) {
+                fetchSampleVideos();
+              }
             }}
             style={{
               padding: "8px 16px",
@@ -1228,14 +1219,12 @@ export default function GazeTracker() {
         open={openSampleVideos}
         onCancel={() => {
           setOpenSampleVideos(false);
-          setSampleVideos([]);
         }}
         footer={[
           <Button
             key="close"
             onClick={() => {
               setOpenSampleVideos(false);
-              setSampleVideos([]);
             }}
           >
             Close
