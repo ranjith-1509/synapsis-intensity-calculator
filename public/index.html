@@ -5,12 +5,32 @@
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- ANDROID STATUS BAR COLOR -->
+    <!-- STATUS BAR COLOR - Android & iOS -->
     <meta name="theme-color" content="#00FF00" />
     <!-- iOS STATUS BAR SUPPORT -->
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="theme-color" content="#00FF00"> <!-- iOS15+ -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- CSS Trick: Green background shows through translucent status bar -->
+    <style>
+      html, body {
+        background-color: #00ff00;
+        margin: 0;
+        padding: 0;
+      }
+      /* Ensure status bar area stays green on iOS */
+      body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: env(safe-area-inset-top, 0px);
+        background: #00ff00;
+        z-index: 9999;
+        pointer-events: none;
+      }
+    </style>
 
     <meta
       name="description"
