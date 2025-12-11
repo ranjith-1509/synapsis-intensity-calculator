@@ -3,34 +3,56 @@
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
     <!-- STATUS BAR COLOR - Android & iOS -->
+    <!-- IMPORTANT: For iOS Safari, "Website Tinting" must be enabled in Settings > Safari > Tabs -->
     <meta name="theme-color" content="#00FF00" />
-    <!-- iOS STATUS BAR SUPPORT -->
+    
+    <!-- iOS STATUS BAR SUPPORT (PWA mode only - when added to home screen) -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     
-    <!-- CSS Trick: Green background shows through translucent status bar -->
+    <!-- CSS: Green background extends to top including safe area (status bar area) -->
     <style>
       html, body {
         background-color: #00ff00;
         margin: 0;
         padding: 0;
       }
-      /* Ensure status bar area stays green on iOS */
+      /* Ensure status bar area stays green on iOS - extends into safe area */
       body::before {
         content: '';
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
-        height: env(safe-area-inset-top, 0px);
+        height: env(safe-area-inset-top, 44px);
         background: #00ff00;
         z-index: 9999;
         pointer-events: none;
       }
+      /* Ensure root div doesn't override the green background at top */
+      #root {
+        background-color: transparent;
+      }
     </style>
+    
+    <!-- JavaScript: Ensure theme-color meta tag is set correctly -->
+    <script>
+      (function() {
+        // Verify theme-color meta tag exists and is set to green
+        var themeColorMeta = document.querySelector('meta[name="theme-color"]');
+        if (!themeColorMeta) {
+          var meta = document.createElement('meta');
+          meta.name = 'theme-color';
+          meta.content = '#00FF00';
+          document.getElementsByTagName('head')[0].appendChild(meta);
+        } else if (themeColorMeta.content !== '#00FF00' && themeColorMeta.content !== '#00ff00') {
+          themeColorMeta.content = '#00FF00';
+        }
+      })();
+    </script>
 
     <meta
       name="description"
