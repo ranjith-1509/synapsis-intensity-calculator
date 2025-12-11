@@ -4,13 +4,9 @@
 @tailwind utilities;
 
 @layer base {
-  html {
-    @apply font-primary text-slate-900;
-  }
 
-  body {
-    @apply bg-white antialiased m-0;
-  }
+
+
 
   h1,
   h2,
