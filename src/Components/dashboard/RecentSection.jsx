@@ -389,11 +389,11 @@ const RecentSection = ({ handleNoOfRecords }) => {
   };
 
   const handleExportMetrics = (session) => {
-    exportMetricsToCSV(session, showToast);
+    exportMetricsToCSV(session);
   };
 
   const handleExportIntensity = (session) => {
-    exportIntensityToCSV(session, showToast);
+    exportIntensityToCSV(session);
   };
 
   return (

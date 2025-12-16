@@ -1,4 +1,4 @@
-export const exportMetricsToCSV = (session, showToast) => {
+export const exportMetricsToCSV = (session) => {
   const headers = ["Time", "Heart Rate (bpm)", "HRV (ms)"];
   const rows = session.metrics.map((metric) => {
     const date = new Date(metric.timestamp);
@@ -21,9 +21,7 @@ export const exportMetricsToCSV = (session, showToast) => {
   link.download = `metrics_data_${session.dateLabel.replace(/\s+/g, "_")}_${session.timeLabel.replace(/[: ]/g, "_")}.csv`;
   link.click();
   
-  if (showToast) {
-    showToast("Metrics data exported successfully.", "success");
-  }
+
 };
 
 export const exportIntensityToCSV = (session, showToast) => {
@@ -49,7 +47,5 @@ export const exportIntensityToCSV = (session, showToast) => {
   link.download = `intensity_data_${session.dateLabel.replace(/\s+/g, "_")}_${session.timeLabel.replace(/[: ]/g, "_")}.csv`;
   link.click();
   
-  if (showToast) {
-    showToast("Intensity data exported successfully.", "success");
-  }
+
 };
