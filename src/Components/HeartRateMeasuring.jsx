@@ -42,6 +42,23 @@ const HeartRateMeasuring = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isNavbarGreen, setIsNavbarGreen] = useState(true);
 
+  // Stable viewport unit for mobile orientation changes
+  useEffect(() => {
+    const setViewportHeight = () => {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty("--app-vh", `${vh}px`);
+    };
+
+    setViewportHeight();
+    window.addEventListener("resize", setViewportHeight);
+    window.addEventListener("orientationchange", setViewportHeight);
+
+    return () => {
+      window.removeEventListener("resize", setViewportHeight);
+      window.removeEventListener("orientationchange", setViewportHeight);
+    };
+  }, []);
+
   const targetFps = DEFAULT_TARGET_FPS;
   const maxPoints = DEFAULT_MAX_POINTS;
   const getCameraStream = async (facingMode) => {
@@ -99,8 +116,10 @@ const HeartRateMeasuring = () => {
 
     const now = Date.now();
 
- 
-setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(2)) }]);
+    setIntensitySeries((prev) => [
+      ...prev,
+      { x: now, y: Number(avgIntensity.toFixed(2)) },
+    ]);
     const rawLimit = targetFps * RAW_SIGNAL_WINDOW_SECONDS;
     setExportData((prev) => {
       const next = [...prev, avgIntensity];
@@ -121,7 +140,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
 
       return limited;
     });
-  }, [ targetFps]);
+  }, [targetFps]);
 
   const saveSessionData = useCallback(async () => {
     if (!userId) return false;
@@ -143,7 +162,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
         hrv: hrvPoint ? hrvPoint.y : null,
       };
     });
-
+    const intensityPoints = intensitySeries.slice(-maxSamples);
     const heartRates = samples.map((sample) => sample.heartRate);
     const validHrvValues = samples
       .map((sample) => sample.hrv)
@@ -182,11 +201,12 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
       avgHeartRate,
       avgHrv,
       metrics: samples,
+      intensityPoints,
     };
     await setDoc(sessionRef, payload);
 
     return true;
-  }, [userId]);
+  }, [userId, intensitySeries]);
 
   const resetMeasurementState = useCallback(() => {
     if (intervalRef.current) {
@@ -354,10 +374,27 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
     } catch (err) {
       console.error("Error while stopping measurement:", err);
     }
-  }, [heartRate, hrv, navigate, resetMeasurementState, saveSessionData, userId]);
+  }, [
+    heartRate,
+    hrv,
+    navigate,
+    resetMeasurementState,
+    saveSessionData,
+    userId,
+  ]);
 
   return (
-    <div className="min-h-screen" style={{ background: "#ffffff" }}>
+    <div
+      className="min-h-screen flex flex-col"
+      style={{
+        background: "#ffffff",
+        minHeight: "calc(var(--app-vh, 1vh) * 100)",
+        height: "calc(var(--app-vh, 1vh) * 100)",
+        overflow: "hidden",
+        WebkitOverflowScrolling: "touch",
+        touchAction: "manipulation",
+      }}
+    >
       {/* Top Navigation */}
       <div
         className="flex items-center gap-4 px-4 py-3 h-24"
@@ -365,6 +402,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
           borderBottom: "1px solid #e5e7eb",
           background: isNavbarGreen ? "#00ff00" : "#ffffff",
           transition: "background-color 0.2s ease-in-out",
+          paddingTop: "env(safe-area-inset-top, 0px)",
         }}
       >
         <button
@@ -388,7 +426,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
             fontFamily: "Inter, sans-serif",
             fontWeight: 600,
             fontSize: 18,
-            color:isNavbarGreen ? "#FFF" : "#111827",
+            color: isNavbarGreen ? "#FFF" : "#111827",
             transition: "color 0.2s ease-in-out",
             margin: 0,
           }}
@@ -399,11 +437,14 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
       </div>
 
       <div
-        className="px-4 py-6"
+        className="px-4 py-6 flex-1"
         style={{
-          paddingBottom: "100px",
-          maxHeight: "calc(100vh - 60px)",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 120px)",
           overflowY: "auto",
+          overflowX: "hidden",
+          scrollbarGutter: "stable",
+          WebkitOverflowScrolling: "touch",
+          overscrollBehavior: "contain",
         }}
       >
         {/* Instructions Card */}
@@ -430,13 +471,33 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
           {/* Metric Cards */}
           <div className="grid grid-cols-2 gap-3 -mt-6 mb-4 relative z-10 mt-3">
             <MetricCard
-              icon={<img src={hr} alt="Heart Pulse" className="w-6 h-6"  style={{width: "54px", height: "51px"}}/>}
+              icon={
+                <img
+                  src={hr}
+                  alt="Heart Pulse"
+                  className="w-6 h-6"
+                  style={{ width: "54px", height: "51px" }}
+                />
+              }
               title="HR"
               value={heartRate || "--"}
               unit="bpm"
-           showReset={false}
+              showReset={false}
             />
-            <MetricCard icon={<img src={hrvIcon} alt="Heart Pulse" className="w-6 h-6"  style={{width: "54px", height: "51px"}}/>} title="HRV" value={hrv || "--"} unit="ms" showReset={false} />
+            <MetricCard
+              icon={
+                <img
+                  src={hrvIcon}
+                  alt="Heart Pulse"
+                  className="w-6 h-6"
+                  style={{ width: "54px", height: "51px" }}
+                />
+              }
+              title="HRV"
+              value={hrv || "--"}
+              unit="ms"
+              showReset={false}
+            />
           </div>
 
           {/* Graph 3: Intensity */}
@@ -446,6 +507,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
               background: "#ffffff",
               border: "1px solid #e5e7eb",
               boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+              overflow: "hidden",
             }}
           >
             <h3
@@ -502,6 +564,7 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
           background: "#ffffff",
           borderTop: "1px solid #e5e7eb",
           boxShadow: "0 -2px 8px rgba(0,0,0,0.05)",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)",
         }}
       >
         <PrimaryButton
@@ -530,10 +593,10 @@ setIntensitySeries((prev) => [...prev, { x: now, y: Number(avgIntensity.toFixed(
           right: 16,
           borderRadius: "12px",
           overflow: "hidden",
-          border: `3px solid ${"light" ? "#22d3ee" : "#3b82f6"}`,
+          border: `3px solid ${theme === "dark" ? "#3b82f6" : "#22d3ee"}`,
           boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
           zIndex: 40,
-          background: "light" ? "#0b1220" : "#fff",
+          background: theme === "dark" ? "#0b1220" : "#fff",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

@@ -1,15 +1,23 @@
-
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ReactApexChart from "react-apexcharts";
 import { onAuthStateChanged } from "firebase/auth";
-import { deleteDoc, doc, getDocs, limit, orderBy, query } from "firebase/firestore";
+import {
+  deleteDoc,
+  doc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+} from "firebase/firestore";
 import { auth, db, userSessionsCollection } from "../../firebaseConfig";
 import HeartPulse from "../../images/heartpulse.svg";
 import { MdDeleteForever } from "react-icons/md";
 import { Tooltip, Modal, notification } from "antd";
-
-
+import {
+  exportMetricsToCSV,
+  exportIntensityToCSV,
+} from "../../Utils/csvExportUtils";
 
 const toDate = (value) => {
   if (!value) return null;
@@ -19,7 +27,13 @@ const toDate = (value) => {
   return null;
 };
 
-const RecentItem = ({ session, onOpen, onDelete }) => {
+const RecentItem = ({
+  session,
+  onOpen,
+  onDelete,
+  onExportCSV,
+  onExportMetricsCSV,
+}) => {
   const chartData = useMemo(() => {
     if (!Array.isArray(session.metrics) || session.metrics.length === 0) {
       return Array.from({ length: 100 }, () => 70);
@@ -32,7 +46,11 @@ const RecentItem = ({ session, onOpen, onDelete }) => {
 
   const chartOptions = useMemo(
     () => ({
-      chart: { type: "area", sparkline: { enabled: true }, toolbar: { show: false } },
+      chart: {
+        type: "area",
+        sparkline: { enabled: true },
+        toolbar: { show: false },
+      },
       stroke: { curve: "smooth", width: 2, colors: ["#60a5fa"] },
       dataLabels: { enabled: false },
       tooltip: { enabled: false },
@@ -47,11 +65,14 @@ const RecentItem = ({ session, onOpen, onDelete }) => {
     }),
     []
   );
-
   return (
     <div
       className="rounded-2xl p-4 mb-3"
-      style={{ background: "#fff", boxShadow: "0 4px 12px rgba(0,0,0,0.08)", cursor: "pointer" }}
+      style={{
+        background: "#fff",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+        cursor: "pointer",
+      }}
       role="button"
       tabIndex={0}
       onClick={onOpen}
@@ -72,9 +93,79 @@ const RecentItem = ({ session, onOpen, onDelete }) => {
           </span>
         </div>
         <div className="flex items-center gap-2" style={{ color: "#9ca3af" }}>
-          <span className="text-xs">
-            {session.timeLabel}
-          </span>
+          <span className="text-xs">{session.timeLabel}</span>
+          {session.metrics && session.metrics.length > 0 && (
+            <Tooltip title="Export Metrics as CSV">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onExportMetricsCSV(session);
+                }}
+                className="p-1"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ color: "#60a5fa" }}
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </button>
+            </Tooltip>
+          )}
+          {session.intensityPoints && session.intensityPoints.length > 0 && (
+            <Tooltip title="Export Intensity as CSV">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onExportCSV(session);
+                }}
+                className="p-1"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ color: "#14b8a6" }}
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </button>
+            </Tooltip>
+          )}
           <span style={{ fontSize: 16 }}>
             <Tooltip title="Delete">
               <button
@@ -85,7 +176,9 @@ const RecentItem = ({ session, onOpen, onDelete }) => {
                 }}
                 className="p-1"
               >
-                <MdDeleteForever style={{ color: "#D55F5A", fontSize: 20, cursor: "pointer" }} />
+                <MdDeleteForever
+                  style={{ color: "#D55F5A", fontSize: 20, cursor: "pointer" }}
+                />
               </button>
             </Tooltip>
           </span>
@@ -103,7 +196,7 @@ const RecentItem = ({ session, onOpen, onDelete }) => {
             </span>
           </div>
           <div className="text-xs" style={{ color: "#9ca3af" }}>
-            HRV {session.avgHrvDisplay} ms 
+            HRV {session.avgHrvDisplay} ms
           </div>
         </div>
         <div style={{ width: 110 }}>
@@ -160,7 +253,7 @@ const RecentSection = ({ handleNoOfRecords }) => {
         const snapshot = await getDocs(
           query(sessionsRef, orderBy("createdAt", "desc"), limit(10))
         );
-     handleNoOfRecords(snapshot?.docs?.length);
+        handleNoOfRecords(snapshot?.docs?.length);
         if (!cancelled) {
           const list = snapshot.docs.map((docSnap) => ({
             id: docSnap.id,
@@ -209,13 +302,19 @@ const RecentSection = ({ handleNoOfRecords }) => {
       const avgHrv = session.avgHrv ?? average(hrvValues);
 
       const createdDate =
-        toDate(session.createdAt) ?? toDate(session.clientCreatedAt) ?? new Date();
+        toDate(session.createdAt) ??
+        toDate(session.clientCreatedAt) ??
+        new Date();
 
-
+      // Extract intensityPoints from session data
+      const intensityPoints = Array.isArray(session.intensityPoints)
+        ? session.intensityPoints
+        : [];
 
       return {
         id: session.id,
         metrics,
+        intensityPoints,
         sampleCount: session.sampleCount ?? metrics.length,
         avgHeartRateDisplay:
           typeof avgHeartRate === "number" ? avgHeartRate.toFixed(1) : "--",
@@ -289,11 +388,22 @@ const RecentSection = ({ handleNoOfRecords }) => {
     setSessionToDelete(null);
   };
 
-    return (
+  const handleExportMetrics = (session) => {
+    exportMetricsToCSV(session, showToast);
+  };
+
+  const handleExportIntensity = (session) => {
+    exportIntensityToCSV(session, showToast);
+  };
+
+  return (
     <div>
       {notifyContextHolder}
       <div className="flex items-center justify-between mb-3">
-        <h4 className="font-semibold" style={{ margin: 0, fontSize: 16, color: "#111" }}>
+        <h4
+          className="font-semibold"
+          style={{ margin: 0, fontSize: 16, color: "#111" }}
+        >
           Recent Scan
         </h4>
       </div>
@@ -301,16 +411,24 @@ const RecentSection = ({ handleNoOfRecords }) => {
       {loading && (
         <div
           className="rounded-2xl p-4 mb-3"
-          style={{ background: "#fff", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}
+          style={{
+            background: "#fff",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+          }}
         >
-          <span style={{ color: "#6b7280", fontSize: 13 }}>Loading recent sessions…</span>
+          <span style={{ color: "#6b7280", fontSize: 13 }}>
+            Loading recent sessions…
+          </span>
         </div>
       )}
 
       {!loading && summaries.length === 0 && (
         <div
           className="rounded-2xl p-4 mb-3"
-          style={{ background: "#fff", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}
+          style={{
+            background: "#fff",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+          }}
         >
           <span style={{ color: "#6b7280", fontSize: 13 }}>
             No sessions yet. Stop a measurement to save your first session.
@@ -325,6 +443,8 @@ const RecentSection = ({ handleNoOfRecords }) => {
             session={session}
             onOpen={() => openSession(session)}
             onDelete={confirmDelete}
+            onExportCSV={handleExportIntensity}
+            onExportMetricsCSV={handleExportMetrics}
           />
         ))}
       </div>
@@ -343,7 +463,8 @@ const RecentSection = ({ handleNoOfRecords }) => {
         onCancel={handleCancelDelete}
       >
         <p className="text-sm text-slate-600">
-          This action cannot be undone and the session data will be removed permanently.
+          This action cannot be undone and the session data will be removed
+          permanently.
         </p>
       </Modal>
     </div>
